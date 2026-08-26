@@ -1,34 +1,45 @@
 const mongoose = require('mongoose');
 
-let cachedPromise = null;
+let cached = global.mongoose;
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
 
 // دالة الاتصال بقاعدة البيانات MongoDB المتوافقة 100% مع Vercel Serverless
 const connectDB = async () => {
-  if (mongoose.connection.readyState >= 1) {
-    return mongoose.connection;
+  if (cached.conn && mongoose.connection.readyState === 1) {
+    return cached.conn;
   }
 
-  if (!process.env.MONGO_URI) {
+  const uri = process.env.MONGO_URI;
+  if (!uri) {
     throw new Error('MONGO_URI is not defined in environment variables');
   }
 
-  if (!cachedPromise) {
+  if (!cached.promise) {
     const opts = {
-      bufferCommands: false, // إيقاف الانتظار الطويل في حال عدم استجابة السيرفر
-      serverSelectionTimeoutMS: 5000,
+      bufferCommands: true,
+      serverSelectionTimeoutMS: 15000,
+      socketTimeoutMS: 45000,
     };
-    cachedPromise = mongoose.connect(process.env.MONGO_URI, opts).then((m) => {
-      console.log('✅ MongoDB Connected to Atlas');
-      return m;
+
+    cached.promise = mongoose.connect(uri, opts).then((mongooseInstance) => {
+      console.log('✅ MongoDB Connected to Atlas successfully');
+      return mongooseInstance;
     });
   }
 
   try {
-    await cachedPromise;
+    cached.conn = await cached.promise;
   } catch (e) {
-    cachedPromise = null;
+    cached.promise = null;
+    cached.conn = null;
+    console.error('❌ MongoDB Atlas Connection Error:', e.message);
     throw e;
   }
+
+  return cached.conn;
 };
 
 module.exports = connectDB;
