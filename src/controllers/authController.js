@@ -192,9 +192,20 @@ const googleLogin = async (req, res, next) => {
         googleId: googleId || '',
         avatar: picture || '',
         jobTitle: role === 'employer' ? 'مدير توظيف' : 'باحث عن عمل',
+        company: role === 'employer' ? `شركة ${name || email.split('@')[0]}` : '',
         isVerified: true,
       });
     } else {
+      // لو المستخدم اختار يدخل كـ employer أو job_seeker نحدث دوره فوراً
+      if (role) {
+        user.role = role;
+        if (role === 'employer' && !user.company) {
+          user.company = `شركة ${user.name || 'الناشر'}`;
+        }
+        if (role === 'employer' && (!user.jobTitle || user.jobTitle === 'باحث عن عمل')) {
+          user.jobTitle = 'مدير توظيف';
+        }
+      }
       if (picture && !user.avatar) user.avatar = picture;
       if (googleId && !user.googleId) user.googleId = googleId;
       user.lastLogin = Date.now();
