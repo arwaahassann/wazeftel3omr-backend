@@ -1,24 +1,33 @@
 const mongoose = require('mongoose');
 
-let isConnected = false;
+let cachedPromise = null;
 
-// دالة الاتصال بقاعدة البيانات MongoDB مع دعم Serverless Caching
+// دالة الاتصال بقاعدة البيانات MongoDB المتوافقة 100% مع Vercel Serverless
 const connectDB = async () => {
-  if (isConnected || mongoose.connection.readyState >= 1) {
-    return;
+  if (mongoose.connection.readyState >= 1) {
+    return mongoose.connection;
+  }
+
+  if (!process.env.MONGO_URI) {
+    throw new Error('MONGO_URI is not defined in environment variables');
+  }
+
+  if (!cachedPromise) {
+    const opts = {
+      bufferCommands: false, // إيقاف الانتظار الطويل في حال عدم استجابة السيرفر
+      serverSelectionTimeoutMS: 5000,
+    };
+    cachedPromise = mongoose.connect(process.env.MONGO_URI, opts).then((m) => {
+      console.log('✅ MongoDB Connected to Atlas');
+      return m;
+    });
   }
 
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
-      serverSelectionTimeoutMS: 8000,
-    });
-    isConnected = true;
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`❌ MongoDB Connection Error: ${error.message}`);
-    if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-      process.exit(1);
-    }
+    await cachedPromise;
+  } catch (e) {
+    cachedPromise = null;
+    throw e;
   }
 };
 
