@@ -22,6 +22,11 @@ const isBlank = (value) => !value || String(value).trim() === '';
 /**
  * دالة مساعدة: يتحقق من صحة شكل البريد الإلكتروني
  */
+const isValidEmail = (email) => {
+  if (!email || typeof email !== 'string') return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+};
+
 /**
  * 🔒 التحقق الصارم من قوة كلمة المرور:
  * - 8 أحرف على الأقل
