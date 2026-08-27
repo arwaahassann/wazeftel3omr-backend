@@ -45,11 +45,21 @@ const applyForJob = async (req, res, next) => {
       notes,
     });
 
-    // 🔔 إنشاء إشعار تلقائي لصاحب العمل بأن هناك متقدم جديد
+    // 🔔 1. إنشاء إشعار تلقائي لصاحب العمل بأن هناك متقدم جديد
     await Notification.create({
       user: job.postedBy,
-      title: `متقدم جديد: ${job.title} 👤`,
-      message: `قام المتقدم (${req.user.name}) بالتقديم على وظيفتك (${job.title})`,
+      title: `طلب تقديم جديد: ${job.title} 👤`,
+      message: `قام المتقدم (${name || req.user.name}) بالتقديم على وظيفتك (${job.title}). يمكنك مراجعة السيرة الذاتية والتواصل معه الآن.`,
+      type: 'pending',
+      job: jobId,
+      application: application._id,
+    }).catch(() => {});
+
+    // 🔔 2. إنشاء إشعار تأكيد للباحث عن عمل
+    await Notification.create({
+      user: req.user._id,
+      title: `تم إرسال طلب التقديم: ${job.title} ✅`,
+      message: `تم إرسال طلب تقديمك بنجاح لوظيفة (${job.title}) لدى (${job.company || 'الشركة المُعلنة'}). سيتم إشعارك فور مراجعة الطلب أو تحديد مقابلة.`,
       type: 'pending',
       job: jobId,
       application: application._id,
