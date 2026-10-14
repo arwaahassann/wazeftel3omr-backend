@@ -4,17 +4,19 @@ const Notification = require('../models/Notification');
 const User = require('../models/User');
 const sendEmail = require('../utils/sendEmail');
 const withCompanyProfileLogo = require('../utils/withCompanyProfileLogo');
+const { expireJobs } = require('../utils/expireJobs');
 
 // @desc    التقديم على وظيفة جديدة
 // @route   POST /api/applications/:jobId
 // @access  Private (Job Seeker)
 const applyForJob = async (req, res, next) => {
   try {
+    await expireJobs();
     const jobId = req.params.jobId;
 
     // 1. التأكد من وجود الوظيفة ومتاحة
     const job = await Job.findById(jobId);
-    if (!job || job.status === 'closed') {
+    if (!job || job.status !== 'active') {
       return res.status(404).json({ success: false, message: 'الوظيفة مغلقة أو غير متاحة للتقديم' });
     }
 

@@ -11,5 +11,11 @@
       "src": "/(.*)",
       "dest": "server.js"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/jobs/expire",
+      "schedule": "0 0 * * *"
+    }
   ]
 }

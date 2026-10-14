@@ -1,5 +1,11 @@
 # Backend setup
 
+## Automatic job closing
+
+Jobs with a closing date remain open through that date in the `Africa/Cairo` timezone, then move to **closed**. The API also closes expired jobs while listing jobs or processing applications, so they are not visible to applicants or accepted after their deadline.
+
+Vercel runs the expiry endpoint daily. Set a server-side `CRON_SECRET` environment variable in the Vercel project; Vercel sends it as a Bearer token to authenticate the scheduled request. The employer's jobs list will then show expired jobs in the **closed** tab.
+
 ## Production admin performance
 
 The admin jobs list uses keyset pagination, so moving forward through large datasets does not use increasingly expensive `skip` queries or wait for a full collection count. Job descriptions and employer contact details are loaded only when an admin opens a job's details.

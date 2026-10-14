@@ -7,6 +7,7 @@ const {
   updateJob,
   deleteJob,
   getMyJobs,
+  expireJobsFromCron,
 } = require('../controllers/jobController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const {
@@ -15,6 +16,7 @@ const {
 } = require('../middleware/validationMiddleware');
 
 // 1. المسارات العامة (متاحة للجميع للبحث واستعراض الوظائف)
+router.get('/expire', expireJobsFromCron);
 router.get('/', getAllJobs);
 router.get('/mine', protect, authorize('employer', 'admin'), getMyJobs);
 router.get('/:id', getJobById);

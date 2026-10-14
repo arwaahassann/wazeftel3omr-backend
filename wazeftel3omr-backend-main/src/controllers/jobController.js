@@ -7,6 +7,7 @@ const User = require('../models/User');
 const { normalizePhoneInput } = require('../utils/accountIdentity');
 const sendJobStatusEmail = require('../utils/sendJobStatusEmail');
 const withCompanyProfileLogo = require('../utils/withCompanyProfileLogo');
+const { expireJobs } = require('../utils/expireJobs');
 
 const hasValidCompanyPhone = (phone) => {
   const normalizedPhone = normalizePhoneInput(phone);
@@ -33,6 +34,7 @@ const requireEmployerPhone = async (userId, res) => {
 // @access  Public
 const getAllJobs = async (req, res, next) => {
   try {
+    await expireJobs();
     const { search, location, jobType, category, level, sortBy = 'newest', page = 1, limit = 6 } = req.query;
     let query = { status: 'active' };
 
@@ -111,6 +113,7 @@ const getAllJobs = async (req, res, next) => {
 // @access  Public
 const getJobById = async (req, res, next) => {
   try {
+    await expireJobs();
     const job = await Job.findById(req.params.id)
       .select('-logoUrl')
       .populate('postedBy', 'name email company avatar');
@@ -348,6 +351,7 @@ const deleteJob = async (req, res, next) => {
 // @access  Private (Employer)
 const getMyJobs = async (req, res, next) => {
   try {
+    await expireJobs();
     const jobs = await Job.find({ postedBy: req.user._id }).lean().sort({ createdAt: -1 });
 
     const jobIds = jobs.map((j) => j._id);
@@ -373,6 +377,30 @@ const getMyJobs = async (req, res, next) => {
   }
 };
 
+const expireJobsFromCron = async (req, res, next) => {
+  try {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      return res.status(503).json({
+        success: false,
+        message: 'لم يتم إعداد CRON_SECRET لتشغيل الإغلاق التلقائي للوظائف',
+      });
+    }
+
+    if (req.get('authorization') !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({ success: false, message: 'غير مصرح' });
+    }
+
+    const result = await expireJobs();
+    res.status(200).json({
+      success: true,
+      closedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAllJobs,
   getJobById,
@@ -380,4 +408,5 @@ module.exports = {
   updateJob,
   deleteJob,
   getMyJobs,
+  expireJobsFromCron,
 };

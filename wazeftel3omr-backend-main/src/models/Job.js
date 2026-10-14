@@ -105,5 +105,6 @@ jobSchema.index({ postedBy: 1, status: 1 });
 jobSchema.index({ category: 1, status: 1 });
 jobSchema.index({ location: 1, status: 1 });
 jobSchema.index({ deletionRequested: 1, status: 1 });
+jobSchema.index({ status: 1, closingDate: 1 });
 
 module.exports = mongoose.model('Job', jobSchema);
