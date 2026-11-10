@@ -58,7 +58,9 @@ app.use(
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.some((allowed) => origin.startsWith(allowed)) ||
-          origin.includes('vercel.app')) {
+          origin.includes('vercel.app') ||
+          origin.startsWith('http://localhost:') ||
+          origin.startsWith('http://127.0.0.1:')) {
         return callback(null, true);
       }
 

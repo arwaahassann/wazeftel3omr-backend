@@ -728,24 +728,50 @@ const getAdminNotifications = async (req, res, next) => {
     const visibleCompanies = visible(newCompanies, 'company');
     const visibleJobs = visible(pendingJobs, 'job');
     const visibleReports = visible(reports, 'report');
-    const totalPending = pendingCompaniesCount + pendingJobsCount + pendingReportsCount;
+
+    // احتساب الإشعارات غير المقروءة بدقة
+    const readOrDeletedStates = await AdminNotificationState.find({
+      admin: req.user._id,
+      $or: [{ isRead: true }, { isDeleted: true }],
+    }).select('notificationKey').lean();
+    const readOrDeletedKeys = readOrDeletedStates.map(s => s.notificationKey);
+    const readOrDeletedIdsByType = Object.fromEntries(['user', 'company', 'job', 'report'].map(type => [
+      type,
+      readOrDeletedKeys
+        .filter(key => key.startsWith(`${type}:`))
+        .map(key => key.slice(type.length + 1)),
+    ]));
+    const excludeReadOrDeleted = type => readOrDeletedIdsByType[type].length
+      ? { _id: { $nin: readOrDeletedIdsByType[type] } }
+      : {};
+
+    const [unreadUsersCount, unreadCompaniesCount, unreadJobsCount, unreadReportsCount] = await Promise.all([
+      User.countDocuments({ ...newUsersFilter, ...excludeReadOrDeleted('user') }),
+      User.countDocuments({ ...pendingCompanyFilter, ...excludeReadOrDeleted('company') }),
+      Job.countDocuments({ ...pendingJobFilter, ...excludeReadOrDeleted('job') }),
+      Report.countDocuments({ ...pendingReportFilter, ...excludeReadOrDeleted('report') }),
+    ]);
+
+    const totalUnread = unreadUsersCount + unreadCompaniesCount + unreadJobsCount + unreadReportsCount;
+    const totalPending = pendingCompaniesCount + pendingJobsCount + pendingReportsCount + newUsersCount;
 
     res.status(200).json({
       success: true,
-      totalPending,
+      unreadCount: totalUnread,
+      totalPending: totalUnread,
       counts: {
-        all: visibleRecentAll.length,
+        all: totalPending,
         users: newUsersCount,
         companies: pendingCompaniesCount,
         jobs: pendingJobsCount,
         reports: pendingReportsCount,
       },
       unreadCounts: {
-        all: visibleRecentAll.filter(item => !item.isRead).length,
-        users: visibleUsers.filter(item => !item.isRead).length,
-        companies: visibleCompanies.filter(item => !item.isRead).length,
-        jobs: visibleJobs.filter(item => !item.isRead).length,
-        reports: visibleReports.filter(item => !item.isRead).length,
+        all: totalUnread,
+        users: unreadUsersCount,
+        companies: unreadCompaniesCount,
+        jobs: unreadJobsCount,
+        reports: unreadReportsCount,
       },
       newUsers: visibleUsers,
       newCompanies: visibleCompanies,
@@ -761,44 +787,49 @@ const getAdminNotifications = async (req, res, next) => {
 const getAdminNotificationCount = async (req, res, next) => {
   try {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const deletedKeys = await AdminNotificationState.distinct('notificationKey', {
+    const readOrDeletedStates = await AdminNotificationState.find({
       admin: req.user._id,
-      isDeleted: true,
-    });
-    const deletedIdsByType = Object.fromEntries(['user', 'company', 'job', 'report'].map(type => [
+      $or: [{ isRead: true }, { isDeleted: true }],
+    }).select('notificationKey isRead isDeleted').lean();
+
+    const readOrDeletedKeys = readOrDeletedStates.map(s => s.notificationKey);
+    const readOrDeletedIdsByType = Object.fromEntries(['user', 'company', 'job', 'report'].map(type => [
       type,
-      deletedKeys
+      readOrDeletedKeys
         .filter(key => key.startsWith(`${type}:`))
         .map(key => key.slice(type.length + 1)),
     ]));
-    const excludeDeleted = type => deletedIdsByType[type].length
-      ? { _id: { $nin: deletedIdsByType[type] } }
+    const excludeReadOrDeleted = type => readOrDeletedIdsByType[type].length
+      ? { _id: { $nin: readOrDeletedIdsByType[type] } }
       : {};
 
     const [newUsers, companies, jobs, reports] = await Promise.all([
       User.countDocuments({
         role: 'job_seeker',
         createdAt: { $gte: weekAgo },
-        ...excludeDeleted('user'),
+        ...excludeReadOrDeleted('user'),
       }),
       User.countDocuments({
         role: 'employer',
         accountStatus: 'reviewing',
-        ...excludeDeleted('company'),
+        ...excludeReadOrDeleted('company'),
       }),
       Job.countDocuments({
         status: { $in: ['reviewing', 'deletion_pending'] },
-        ...excludeDeleted('job'),
+        ...excludeReadOrDeleted('job'),
       }),
       Report.countDocuments({
         status: { $in: ['pending', 'reviewing', 'open'] },
-        ...excludeDeleted('report'),
+        ...excludeReadOrDeleted('report'),
       }),
     ]);
 
+    const unreadCount = newUsers + companies + jobs + reports;
+
     res.status(200).json({
       success: true,
-      totalPending: newUsers + companies + jobs + reports,
+      unreadCount,
+      totalPending: unreadCount,
     });
   } catch (error) {
     next(error);
