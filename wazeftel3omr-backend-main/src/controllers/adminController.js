@@ -26,11 +26,14 @@ const getDashboardStats = async (req, res, next) => {
     // جلب activeJobIds لاستبعاد طلبات الوظائف المحذوفة من العدد
     const activeJobIds = await Job.distinct('_id');
 
-    const [totalEmployers, newEmployersThisWeek,
+    const [totalSeekers, totalEmployers, newEmployersThisWeek,
       totalJobs, activeJobs, reviewingJobs, closedJobs, rejectedJobs,
       totalApplications, newApplicationsThisWeek, applicationStatusStats,
+      activeSeekers, suspendedSeekers, reviewingSeekers,
       activeEmployers, suspendedEmployers, reviewingEmployers,
       recentJobs, recentApplications, recentReports] = await Promise.all([
+      User.countDocuments({ role: 'job_seeker' })
+        .hint('role_1_createdAt_-1'),
       User.countDocuments({ role: 'employer' })
         .hint('role_1_createdAt_-1'),
       User.countDocuments({
@@ -46,6 +49,9 @@ const getDashboardStats = async (req, res, next) => {
       countUniqueApplications({ job: { $in: activeJobIds } }),
       countUniqueApplications({ job: { $in: activeJobIds }, createdAt: { $gte: oneWeekAgo } }),
       getUniqueApplicationStats({ job: { $in: activeJobIds } }),
+      User.countDocuments({ role: 'job_seeker', accountStatus: 'active' }),
+      User.countDocuments({ role: 'job_seeker', accountStatus: 'suspended' }),
+      User.countDocuments({ role: 'job_seeker', accountStatus: 'reviewing' }),
       // إحصائيات حالة الشركات
       User.countDocuments({ role: 'employer', accountStatus: 'active' }),
       User.countDocuments({ role: 'employer', accountStatus: 'suspended' }),
@@ -113,6 +119,7 @@ const getDashboardStats = async (req, res, next) => {
     res.status(200).json({
       success: true,
       stats: {
+        totalSeekers,
         totalEmployers,
         totalJobs,
         totalApplications,
@@ -121,6 +128,11 @@ const getDashboardStats = async (req, res, next) => {
         reviewingJobs,
         closedJobs,
         rejectedJobs,
+        seekers: {
+          active: activeSeekers,
+          suspended: suspendedSeekers,
+          reviewing: reviewingSeekers,
+        },
         employers: {
           active: activeEmployers,
           suspended: suspendedEmployers,
