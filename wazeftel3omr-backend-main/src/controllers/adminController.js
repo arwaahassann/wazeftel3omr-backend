@@ -264,6 +264,77 @@ const updateCompanyStatus = async (req, res, next) => {
   }
 };
 
+// @desc    جلب الباحثين عن عمل مع البحث والفلترة والصفحات
+// @route   GET /api/admin/seekers
+// @access  Private (Admin)
+const getAdminSeekers = async (req, res, next) => {
+  try {
+    const pageNum = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+    const filter = { role: 'job_seeker' };
+    const { status, search } = req.query;
+
+    if (status && status !== 'all') {
+      if (!['active', 'reviewing', 'suspended'].includes(status)) {
+        return res.status(400).json({ success: false, message: 'حالة الباحث عن عمل غير صالحة' });
+      }
+      filter.accountStatus = status;
+    }
+
+    if (typeof search === 'string' && search.trim()) {
+      const regex = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ name: regex }, { email: regex }, { phone: regex }, { jobTitle: regex }];
+    }
+
+    const [seekers, total] = await Promise.all([
+      User.find(filter)
+        .select('name email phone jobTitle accountStatus createdAt avatar isVerified')
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      User.countDocuments(filter),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      count: seekers.length,
+      total,
+      page: pageNum,
+      pages: Math.ceil(total / limitNum) || 1,
+      seekers,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    تحديث حالة حساب باحث عن عمل
+// @route   PUT /api/admin/seekers/:id/status
+// @access  Private (Admin)
+const updateAdminSeekerStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    if (!['active', 'reviewing', 'suspended'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'حالة الباحث عن عمل غير صالحة' });
+    }
+
+    const seeker = await User.findOneAndUpdate(
+      { _id: req.params.id, role: 'job_seeker' },
+      { accountStatus: status },
+      { new: true, select: 'name email accountStatus' }
+    );
+
+    if (!seeker) {
+      return res.status(404).json({ success: false, message: 'الباحث عن عمل غير موجود' });
+    }
+
+    res.status(200).json({ success: true, message: 'تم تحديث حالة الباحث عن عمل بنجاح', seeker });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    جلب جميع الوظائف للأدمن مع فلترة وحالة وبحث
 // @route   GET /api/admin/jobs
 // @access  Private (Admin)
@@ -852,6 +923,8 @@ module.exports = {
   searchAdminAccounts,
   getAllCompanies,
   updateCompanyStatus,
+  getAdminSeekers,
+  updateAdminSeekerStatus,
   getAdminAllJobs,
   getAdminJobDetails,
   updateAdminJobStatus,

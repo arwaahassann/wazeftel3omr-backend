@@ -6,6 +6,8 @@ const {
   searchAdminAccounts,
   getAllCompanies,
   updateCompanyStatus,
+  getAdminSeekers,
+  updateAdminSeekerStatus,
   getAdminAllJobs,
   getAdminJobDetails,
   updateAdminJobStatus,
@@ -41,20 +43,24 @@ router.get('/account-search', searchAdminAccounts);
 router.get('/companies', getAllCompanies);
 router.put('/companies/:id/status', updateCompanyStatus);
 
-// 4. إدارة الوظائف
+// 4. إدارة الباحثين عن عمل فقط
+router.get('/seekers', getAdminSeekers);
+router.put('/seekers/:id/status', updateAdminSeekerStatus);
+
+// 5. إدارة الوظائف
 router.get('/jobs', getAdminAllJobs);
 router.get('/jobs/:id', getAdminJobDetails);
 router.put('/jobs/:id/status', updateAdminJobStatus);
 router.delete('/jobs/:id', deleteAdminJob);
 
-// 5. إدارة طلبات التقديم
+// 6. إدارة طلبات التقديم
 router.get('/applications', getAdminAllApplications);
 
-// 6. الشكاوي والمقترحات
+// 7. الشكاوي والمقترحات
 router.get('/reports', getAdminAllReports);
 router.put('/reports/:id/status', updateAdminReportStatus);
 
-// 7. إشعارات الأدمن
+// 8. إشعارات الأدمن
 router.get('/notifications/count', getAdminNotificationCount);
 router.get('/notifications', getAdminNotifications);
 router.put('/notifications/state', updateAdminNotificationStates);
