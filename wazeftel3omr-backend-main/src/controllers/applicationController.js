@@ -5,6 +5,11 @@ const User = require('../models/User');
 const sendEmail = require('../utils/sendEmail');
 const withCompanyProfileLogo = require('../utils/withCompanyProfileLogo');
 const { expireJobs } = require('../utils/expireJobs');
+const {
+  countUniqueApplications,
+  getUniqueApplicationIds,
+  getUniqueApplicationStats,
+} = require('../utils/countUniqueApplications');
 
 // @desc    التقديم على وظيفة جديدة
 // @route   POST /api/applications/:jobId
@@ -147,7 +152,10 @@ const getMyApplications = async (req, res, next) => {
       query.status = status;
     }
 
-    const rawApplications = await Application.find(query)
+    const applicationIds = await getUniqueApplicationIds(query, 0, null);
+    const rawApplications = await Application.find({
+      _id: { $in: applicationIds.map((application) => application._id) },
+    })
       .select('-cvUrl')
       .populate({
         path: 'job',
@@ -179,20 +187,18 @@ const getApplicationStats = async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    const stats = await Application.aggregate([
-      { $match: { user: userId } },
-      // استبعاد الطلبات التي وظيفتها محذوفة
-      {
-        $lookup: {
-          from: 'jobs',
-          localField: 'job',
-          foreignField: '_id',
-          as: 'jobDoc',
+    const stats = await getUniqueApplicationStats({ user: userId }, [
+        // استبعاد الطلبات التي وظيفتها محذوفة
+        {
+          $lookup: {
+            from: 'jobs',
+            localField: 'job',
+            foreignField: '_id',
+            as: 'jobDoc',
+          },
         },
-      },
-      { $match: { jobDoc: { $ne: [] } } },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]);
+        { $match: { jobDoc: { $ne: [] } } },
+      ]);
 
     const formattedStats = {
       applications: 0,
@@ -500,7 +506,10 @@ const getJobApplications = async (req, res, next) => {
     if (job.postedBy.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'غير مصرح لك' });
     }
-    const applications = await Application.find({ job: req.params.jobId })
+    const applicationIds = await getUniqueApplicationIds({ job: job._id }, 0, null);
+    const applications = await Application.find({
+      _id: { $in: applicationIds.map((application) => application._id) },
+    })
       .select('-cvUrl')
       .populate('user', 'name email jobTitle phone location skills avatar')
       .sort({ createdAt: -1 })
@@ -540,10 +549,7 @@ const getEmployerApplicantStats = async (req, res, next) => {
   try {
     const myJobIds = await Job.find({ postedBy: req.user._id }).distinct('_id');
 
-    const stats = await Application.aggregate([
-      { $match: { job: { $in: myJobIds } } },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]);
+    const stats = await getUniqueApplicationStats({ job: { $in: myJobIds } });
 
     const formattedStats = { total: 0, pending: 0, reviewing: 0, interview: 0, accepted: 0, rejected: 0 };
     let total = 0;
@@ -583,21 +589,23 @@ const getAllEmployerApplicants = async (req, res, next) => {
     }
 
     if (req.query.summary === 'true') {
-      const [applications, total, interviewCount, activeJobsCount] = await Promise.all([
-        Application.find(filter)
-          .select('-cvUrl')
-          .populate('user', 'name email jobTitle phone location skills avatar')
-          .populate('job', 'title company location')
-          .sort({ createdAt: -1 })
-          .limit(8)
-          .lean(),
-        Application.countDocuments(filter),
-        Application.countDocuments({ ...filter, status: 'interview' }),
+      const [applicationIds, total, interviewCount, activeJobsCount] = await Promise.all([
+        getUniqueApplicationIds(filter, 0, 8),
+        countUniqueApplications(filter),
+        countUniqueApplications({ ...filter, status: 'interview' }),
         Job.countDocuments({
           postedBy: req.user._id,
           $or: [{ status: 'active' }, { status: { $exists: false } }],
         }),
       ]);
+      const applications = await Application.find({
+        _id: { $in: applicationIds.map((application) => application._id) },
+      })
+        .select('-cvUrl')
+        .populate('user', 'name email jobTitle phone location skills avatar')
+        .populate('job', 'title company location')
+        .sort({ createdAt: -1 })
+        .lean();
 
       return res.status(200).json({
         success: true,
@@ -611,17 +619,18 @@ const getAllEmployerApplicants = async (req, res, next) => {
       });
     }
 
-    const [applications, total] = await Promise.all([
-      Application.find(filter)
-        .select('-cvUrl')
-        .populate('user', 'name email jobTitle phone location skills avatar')
-        .populate('job', 'title company location')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum)
-        .lean(),
-      Application.countDocuments(filter),
+    const [applicationIds, total] = await Promise.all([
+      getUniqueApplicationIds(filter, skip, limitNum),
+      countUniqueApplications(filter),
     ]);
+    const applications = await Application.find({
+      _id: { $in: applicationIds.map((application) => application._id) },
+    })
+      .select('-cvUrl')
+      .populate('user', 'name email jobTitle phone location skills avatar')
+      .populate('job', 'title company location')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.status(200).json({
       success: true,

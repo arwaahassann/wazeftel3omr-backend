@@ -358,7 +358,15 @@ const getMyJobs = async (req, res, next) => {
 
     const applicantCounts = await Application.aggregate([
       { $match: { job: { $in: jobIds } } },
-      { $group: { _id: '$job', count: { $sum: 1 } } },
+      {
+        $group: {
+          _id: {
+            job: '$job',
+            user: { $ifNull: ['$user', '$_id'] },
+          },
+        },
+      },
+      { $group: { _id: '$_id.job', count: { $sum: 1 } } },
     ]);
 
     const countMap = {};
