@@ -9,7 +9,11 @@ const Message = require('../models/Message');
 const SavedJob = require('../models/SavedJob');
 const AdminNotificationState = require('../models/AdminNotificationState');
 const sendJobStatusEmail = require('../utils/sendJobStatusEmail');
-const { countUniqueApplications, getUniqueApplicationIds } = require('../utils/countUniqueApplications');
+const {
+  countUniqueApplications,
+  getUniqueApplicationIds,
+  getUniqueApplicationStats,
+} = require('../utils/countUniqueApplications');
 
 // @desc    إحصائيات الداشبورد الشاملة
 // @route   GET /api/admin/stats
@@ -22,11 +26,15 @@ const getDashboardStats = async (req, res, next) => {
     // جلب activeJobIds لاستبعاد طلبات الوظائف المحذوفة من العدد
     const activeJobIds = await Job.distinct('_id');
 
-    const [totalUsers, totalEmployers, newUsersThisWeek, newEmployersThisWeek,
+    const [totalUsers, totalSeekers, totalEmployers, newUsersThisWeek, newEmployersThisWeek,
       totalJobs, activeJobs, reviewingJobs, closedJobs, rejectedJobs,
-      totalApplications, newApplicationsThisWeek, recentUsers, recentJobs,
-      recentApplications, recentReports] = await Promise.all([
+      totalApplications, newApplicationsThisWeek, applicationStatusStats,
+      activeUsers, suspendedUsers, reviewingUsers,
+      activeEmployers, suspendedEmployers, reviewingEmployers,
+      recentUsers, recentJobs, recentApplications, recentReports] = await Promise.all([
       User.countDocuments({ role: { $in: ['job_seeker', 'employer'] } })
+        .hint('role_1_createdAt_-1'),
+      User.countDocuments({ role: 'job_seeker' })
         .hint('role_1_createdAt_-1'),
       User.countDocuments({ role: 'employer' })
         .hint('role_1_createdAt_-1'),
@@ -46,6 +54,15 @@ const getDashboardStats = async (req, res, next) => {
       // عدد الطلبات الحقيقية (بعد استبعاد الوظائف المحذوفة)
       countUniqueApplications({ job: { $in: activeJobIds } }),
       countUniqueApplications({ job: { $in: activeJobIds }, createdAt: { $gte: oneWeekAgo } }),
+      getUniqueApplicationStats({ job: { $in: activeJobIds } }),
+      // إحصائيات حالة الباحثين
+      User.countDocuments({ role: 'job_seeker', accountStatus: 'active' }),
+      User.countDocuments({ role: 'job_seeker', accountStatus: 'suspended' }),
+      User.countDocuments({ role: 'job_seeker', accountStatus: 'reviewing' }),
+      // إحصائيات حالة الشركات
+      User.countDocuments({ role: 'employer', accountStatus: 'active' }),
+      User.countDocuments({ role: 'employer', accountStatus: 'suspended' }),
+      User.countDocuments({ role: 'employer', accountStatus: 'reviewing' }),
       User.find({ role: { $in: ['job_seeker', 'employer'] } })
         .select('name email role company createdAt')
         .sort({ createdAt: -1, _id: -1 })
@@ -107,17 +124,40 @@ const getDashboardStats = async (req, res, next) => {
       .sort((a, b) => new Date(b.date) - new Date(a.date))
       .slice(0, 8);
 
+    const applicationStatuses = {
+      pending: 0,
+      reviewing: 0,
+      interview: 0,
+      accepted: 0,
+      rejected: 0,
+    };
+    applicationStatusStats.forEach(({ _id, count }) => {
+      if (Object.hasOwn(applicationStatuses, _id)) applicationStatuses[_id] = count;
+    });
+
     res.status(200).json({
       success: true,
       stats: {
         totalUsers,
+        totalSeekers,
         totalEmployers,
         totalJobs,
         totalApplications,
+        applicationStatuses,
         activeJobs,
         reviewingJobs,
         closedJobs,
         rejectedJobs,
+        seekers: {
+          active: activeUsers,
+          suspended: suspendedUsers,
+          reviewing: reviewingUsers,
+        },
+        employers: {
+          active: activeEmployers,
+          suspended: suspendedEmployers,
+          reviewing: reviewingEmployers,
+        },
         thisWeek: {
           newUsers: newUsersThisWeek,
           newEmployers: newEmployersThisWeek,
