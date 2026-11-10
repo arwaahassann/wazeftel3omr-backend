@@ -26,14 +26,12 @@ const getDashboardStats = async (req, res, next) => {
     // جلب activeJobIds لاستبعاد طلبات الوظائف المحذوفة من العدد
     const activeJobIds = await Job.distinct('_id');
 
-    const [totalUsers, totalSeekers, totalEmployers, newUsersThisWeek, newEmployersThisWeek,
+    const [totalSeekers, totalEmployers, newUsersThisWeek, newEmployersThisWeek,
       totalJobs, activeJobs, reviewingJobs, closedJobs, rejectedJobs,
       totalApplications, newApplicationsThisWeek, applicationStatusStats,
       activeUsers, suspendedUsers, reviewingUsers,
       activeEmployers, suspendedEmployers, reviewingEmployers,
       recentUsers, recentJobs, recentApplications, recentReports] = await Promise.all([
-      User.countDocuments({ role: { $in: ['job_seeker', 'employer'] } })
-        .hint('role_1_createdAt_-1'),
       User.countDocuments({ role: 'job_seeker' })
         .hint('role_1_createdAt_-1'),
       User.countDocuments({ role: 'employer' })
@@ -138,7 +136,6 @@ const getDashboardStats = async (req, res, next) => {
     res.status(200).json({
       success: true,
       stats: {
-        totalUsers,
         totalSeekers,
         totalEmployers,
         totalJobs,
@@ -549,7 +546,7 @@ const getAdminAllReports = async (req, res, next) => {
       filter.$or = [{ subject: regex }, { message: regex }];
     }
 
-    const [reports, total, pendingCount, reviewingCount, resolvedCount, complaintCount, suggestionCount] = await Promise.all([
+    const [reports, total, complaintCount, suggestionCount, complaintOpenCount, complaintResolvedCount, complaintRejectedCount, suggestionOpenCount, suggestionResolvedCount, suggestionRejectedCount] = await Promise.all([
       Report.find(filter)
         .populate('user', 'name email role phone avatar')
         .populate('relatedJob', 'title company')
@@ -558,11 +555,14 @@ const getAdminAllReports = async (req, res, next) => {
         .limit(limitNum)
         .lean(),
       Report.countDocuments(filter),
-      Report.countDocuments({ status: { $in: ['pending', 'reviewing'] } }),
-      Report.countDocuments({ status: 'reviewing' }),
-      Report.countDocuments({ status: 'resolved' }),
       Report.countDocuments({ type: 'complaint' }),
       Report.countDocuments({ type: 'suggestion' }),
+      Report.countDocuments({ type: 'complaint', status: { $in: ['pending', 'reviewing'] } }),
+      Report.countDocuments({ type: 'complaint', status: 'resolved' }),
+      Report.countDocuments({ type: 'complaint', status: 'rejected' }),
+      Report.countDocuments({ type: 'suggestion', status: { $in: ['pending', 'reviewing'] } }),
+      Report.countDocuments({ type: 'suggestion', status: 'resolved' }),
+      Report.countDocuments({ type: 'suggestion', status: 'rejected' }),
     ]);
 
     res.status(200).json({
@@ -571,7 +571,16 @@ const getAdminAllReports = async (req, res, next) => {
       total,
       page: pageNum,
       pages: Math.ceil(total / limitNum) || 1,
-      stats: { pendingCount, reviewingCount, resolvedCount, complaintCount, suggestionCount },
+      stats: {
+        complaintCount,
+        suggestionCount,
+        complaintOpenCount,
+        complaintResolvedCount,
+        complaintRejectedCount,
+        suggestionOpenCount,
+        suggestionResolvedCount,
+        suggestionRejectedCount,
+      },
       reports,
     });
   } catch (error) {
