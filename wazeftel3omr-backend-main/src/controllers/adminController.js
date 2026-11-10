@@ -549,7 +549,7 @@ const getAdminAllReports = async (req, res, next) => {
       filter.$or = [{ subject: regex }, { message: regex }];
     }
 
-    const [reports, total, pendingCount, reviewingCount, resolvedCount] = await Promise.all([
+    const [reports, total, pendingCount, reviewingCount, resolvedCount, complaintCount, suggestionCount] = await Promise.all([
       Report.find(filter)
         .populate('user', 'name email role phone avatar')
         .populate('relatedJob', 'title company')
@@ -561,6 +561,8 @@ const getAdminAllReports = async (req, res, next) => {
       Report.countDocuments({ status: { $in: ['pending', 'reviewing'] } }),
       Report.countDocuments({ status: 'reviewing' }),
       Report.countDocuments({ status: 'resolved' }),
+      Report.countDocuments({ type: 'complaint' }),
+      Report.countDocuments({ type: 'suggestion' }),
     ]);
 
     res.status(200).json({
@@ -569,7 +571,7 @@ const getAdminAllReports = async (req, res, next) => {
       total,
       page: pageNum,
       pages: Math.ceil(total / limitNum) || 1,
-      stats: { pendingCount, reviewingCount, resolvedCount },
+      stats: { pendingCount, reviewingCount, resolvedCount, complaintCount, suggestionCount },
       reports,
     });
   } catch (error) {
