@@ -533,7 +533,37 @@ const getEmployerApplicationDetails = async (req, res, next) => {
   }
 };
 
-// @desc    جلب جميع المتقدمين عبر كافة وظائف الـ Employer الحالي
+// @desc    جلب إحصائيات المتقدمين للـ Employer
+// @route   GET /api/applications/employer/stats
+// @access  Private (Employer)
+const getEmployerApplicantStats = async (req, res, next) => {
+  try {
+    const myJobIds = await Job.find({ postedBy: req.user._id }).distinct('_id');
+
+    const stats = await Application.aggregate([
+      { $match: { job: { $in: myJobIds } } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+
+    const formattedStats = { total: 0, pending: 0, reviewing: 0, interview: 0, accepted: 0, rejected: 0 };
+    let total = 0;
+    stats.forEach((item) => {
+      total += item.count;
+      if (item._id === 'pending') formattedStats.pending = item.count;
+      if (item._id === 'reviewing') formattedStats.reviewing = item.count;
+      if (item._id === 'interview') formattedStats.interview = item.count;
+      if (item._id === 'accepted') formattedStats.accepted = item.count;
+      if (item._id === 'rejected') formattedStats.rejected = item.count;
+    });
+    formattedStats.total = total;
+
+    res.status(200).json({ success: true, stats: formattedStats });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 // @route   GET /api/applications/employer/all
 // @access  Private (Employer / Admin)
 const getAllEmployerApplicants = async (req, res, next) => {
@@ -614,4 +644,5 @@ module.exports = {
   getJobApplications,
   getEmployerApplicationDetails,
   getAllEmployerApplicants,
+  getEmployerApplicantStats,
 };

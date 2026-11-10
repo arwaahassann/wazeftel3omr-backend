@@ -8,6 +8,7 @@ const {
   getJobApplications,
   getEmployerApplicationDetails,
   getAllEmployerApplicants,
+  getEmployerApplicantStats,
 } = require('../controllers/applicationController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const {
@@ -23,6 +24,7 @@ router.get('/stats', getApplicationStats);
 router.get('/', getMyApplications);
 
 // 📌 Employer routes
+router.get('/employer/stats', authorize('employer', 'admin'), getEmployerApplicantStats);
 router.get('/all',          authorize('employer', 'admin'), getAllEmployerApplicants);
 router.get('/employer/all', authorize('employer', 'admin'), getAllEmployerApplicants);
 router.get('/job/:jobId',   authorize('employer', 'admin'), getJobApplications);
