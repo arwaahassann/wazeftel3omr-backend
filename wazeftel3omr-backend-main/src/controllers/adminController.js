@@ -26,20 +26,13 @@ const getDashboardStats = async (req, res, next) => {
     // جلب activeJobIds لاستبعاد طلبات الوظائف المحذوفة من العدد
     const activeJobIds = await Job.distinct('_id');
 
-    const [totalSeekers, totalEmployers, newUsersThisWeek, newEmployersThisWeek,
+    const [totalEmployers, newEmployersThisWeek,
       totalJobs, activeJobs, reviewingJobs, closedJobs, rejectedJobs,
       totalApplications, newApplicationsThisWeek, applicationStatusStats,
-      activeUsers, suspendedUsers, reviewingUsers,
       activeEmployers, suspendedEmployers, reviewingEmployers,
-      recentUsers, recentJobs, recentApplications, recentReports] = await Promise.all([
-      User.countDocuments({ role: 'job_seeker' })
-        .hint('role_1_createdAt_-1'),
+      recentJobs, recentApplications, recentReports] = await Promise.all([
       User.countDocuments({ role: 'employer' })
         .hint('role_1_createdAt_-1'),
-      User.countDocuments({
-        role: { $in: ['job_seeker', 'employer'] },
-        createdAt: { $gte: oneWeekAgo },
-      }).hint('role_1_createdAt_-1'),
       User.countDocuments({
         role: 'employer',
         createdAt: { $gte: oneWeekAgo },
@@ -53,19 +46,10 @@ const getDashboardStats = async (req, res, next) => {
       countUniqueApplications({ job: { $in: activeJobIds } }),
       countUniqueApplications({ job: { $in: activeJobIds }, createdAt: { $gte: oneWeekAgo } }),
       getUniqueApplicationStats({ job: { $in: activeJobIds } }),
-      // إحصائيات حالة الباحثين
-      User.countDocuments({ role: 'job_seeker', accountStatus: 'active' }),
-      User.countDocuments({ role: 'job_seeker', accountStatus: 'suspended' }),
-      User.countDocuments({ role: 'job_seeker', accountStatus: 'reviewing' }),
       // إحصائيات حالة الشركات
       User.countDocuments({ role: 'employer', accountStatus: 'active' }),
       User.countDocuments({ role: 'employer', accountStatus: 'suspended' }),
       User.countDocuments({ role: 'employer', accountStatus: 'reviewing' }),
-      User.find({ role: { $in: ['job_seeker', 'employer'] } })
-        .select('name email role company createdAt')
-        .sort({ createdAt: -1, _id: -1 })
-        .limit(5)
-        .lean(),
       Job.find()
         .select('title company createdAt postedBy')
         .populate('postedBy', 'company')
@@ -94,13 +78,6 @@ const getDashboardStats = async (req, res, next) => {
         text: `تم نشر وظيفه جديده بواسطه شركه ${j.postedBy?.company || j.company || 'المجد'}`,
         subText: j.title,
         date: j.createdAt,
-      })),
-      ...recentUsers.map((u) => ({
-        id: 'user_' + u._id,
-        type: 'user',
-        text: u.role === 'employer' ? `تم تسجيل شركه جديده: ${u.company || u.name}` : `مستخدم جديد: ${u.name}`,
-        subText: u.email,
-        date: u.createdAt,
       })),
       ...recentApplications.map((a) => ({
         id: 'app_' + a._id,
@@ -136,7 +113,6 @@ const getDashboardStats = async (req, res, next) => {
     res.status(200).json({
       success: true,
       stats: {
-        totalSeekers,
         totalEmployers,
         totalJobs,
         totalApplications,
@@ -145,18 +121,12 @@ const getDashboardStats = async (req, res, next) => {
         reviewingJobs,
         closedJobs,
         rejectedJobs,
-        seekers: {
-          active: activeUsers,
-          suspended: suspendedUsers,
-          reviewing: reviewingUsers,
-        },
         employers: {
           active: activeEmployers,
           suspended: suspendedEmployers,
           reviewing: reviewingEmployers,
         },
         thisWeek: {
-          newUsers: newUsersThisWeek,
           newEmployers: newEmployersThisWeek,
           newApplications: newApplicationsThisWeek,
         },
@@ -168,71 +138,31 @@ const getDashboardStats = async (req, res, next) => {
   }
 };
 
-// @desc    جلب جميع المستخدمين مع فلتر + بحث + pagination
-// @route   GET /api/admin/users
+// @desc    بحث محدود للقراءة فقط عن الحسابات من شريط لوحة الأدمن
+// @route   GET /api/admin/account-search
 // @access  Private (Admin)
-const getAllUsers = async (req, res, next) => {
+const searchAdminAccounts = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, role, search, status } = req.query;
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
-    const skip = (pageNum - 1) * limitNum;
-
-    const filter = { role: { $ne: 'admin' } };
-    if (role && role !== 'all') {
-      filter.role = role;
-    }
-    if (status && status !== 'all') {
-      filter.accountStatus = status;
-    }
-    if (search && search.trim()) {
-      const regex = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$or = [{ name: regex }, { email: regex }, { phone: regex }, { company: regex }];
+    const search = String(req.query.search || '').trim();
+    if (search.length < 2) {
+      return res.status(400).json({ success: false, message: 'اكتب حرفين على الأقل للبحث عن الحساب' });
     }
 
-    const [users, total] = await Promise.all([
-      User.find(filter)
+    const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const users = await User.find({
+      role: { $in: ['job_seeker', 'employer'] },
+      $or: [{ name: regex }, { email: regex }, { phone: regex }, { company: regex }],
+    })
         .select('name email role phone company accountStatus createdAt avatar isVerified')
         .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum)
-        .lean(),
-      User.countDocuments(filter),
-    ]);
+        .limit(8)
+        .lean();
 
     res.status(200).json({
       success: true,
       count: users.length,
-      total,
-      page: pageNum,
-      pages: Math.ceil(total / limitNum) || 1,
       users,
     });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    تحديث حالة حساب مستخدم
-// @route   PUT /api/admin/users/:id/status
-// @access  Private (Admin)
-const updateUserStatus = async (req, res, next) => {
-  try {
-    const { status } = req.body;
-    const validStatuses = ['active', 'reviewing', 'suspended'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ success: false, message: 'حالة غير صالحة' });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { accountStatus: status },
-      { new: true, select: 'name email role accountStatus' }
-    );
-
-    if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
-
-    res.status(200).json({ success: true, message: 'تم تحديث حالة المستخدم بنجاح', user });
   } catch (error) {
     next(error);
   }
@@ -673,13 +603,12 @@ const getAdminNotifications = async (req, res, next) => {
   try {
     const limit = 20; // جلب حتى 20 إشعار
 
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const deletedKeys = await AdminNotificationState.distinct('notificationKey', {
       admin: req.user._id,
       isDeleted: true,
     });
 
-    const deletedIdsByType = Object.fromEntries(['user', 'company', 'job', 'report'].map(type => [
+    const deletedIdsByType = Object.fromEntries(['company', 'job', 'report'].map(type => [
       type,
       deletedKeys
         .filter(key => key.startsWith(`${type}:`))
@@ -688,11 +617,6 @@ const getAdminNotifications = async (req, res, next) => {
     const excludeDeleted = type => deletedIdsByType[type].length
       ? { _id: { $nin: toObjectIds(deletedIdsByType[type]) } }
       : {};
-    const newUsersFilter = {
-      role: 'job_seeker',
-      createdAt: { $gte: weekAgo },
-      ...excludeDeleted('user'),
-    };
     const pendingJobFilter = {
       status: { $in: ['reviewing', 'deletion_pending'] },
       ...excludeDeleted('job'),
@@ -706,12 +630,7 @@ const getAdminNotifications = async (req, res, next) => {
       status: { $in: ['pending', 'reviewing', 'open'] },
       ...excludeDeleted('report'),
     };
-    const [newUsers, newCompanies, pendingJobs, reports, recentAll, newUsersCount, pendingCompaniesCount, pendingJobsCount, pendingReportsCount] = await Promise.all([
-      // مستخدمون جدد (آخر 7 أيام)
-      User.find(newUsersFilter)
-        .select('name email createdAt avatar')
-        .sort({ createdAt: -1 }).limit(limit).lean(),
-
+    const [newCompanies, pendingJobs, reports, recentAll, pendingCompaniesCount, pendingJobsCount, pendingReportsCount] = await Promise.all([
       // شركات تحتاج موافقة
       User.find(pendingCompanyFilter)
         .select('name email company accountStatus createdAt avatar')
@@ -731,27 +650,26 @@ const getAdminNotifications = async (req, res, next) => {
 
       // آخر الأنشطة العامة (مزيج)
       (async () => {
-        const [jobs, users, reps] = await Promise.all([
+        const [jobs, companies, reps] = await Promise.all([
           Job.find(pendingJobFilter).sort({ createdAt: -1 }).limit(4).select('title status createdAt').lean(),
           User.find({
-            role: { $ne: 'admin' },
-            _id: { $nin: [...deletedIdsByType.user, ...deletedIdsByType.company] },
-          }).sort({ createdAt: -1 }).limit(4).select('name role company createdAt').lean(),
+            role: 'employer',
+            _id: { $nin: deletedIdsByType.company },
+          }).sort({ createdAt: -1 }).limit(4).select('name company createdAt').lean(),
           Report.find({ ...excludeDeleted('report') }).sort({ createdAt: -1 }).limit(4).select('subject type createdAt').lean(),
         ]);
         return [
           ...jobs.map(j => ({ type: 'job', entityId: j._id, searchText: j.title, status: j.status, text: j.status === 'deletion_pending' ? `طلب حذف وظيفة: ${j.title}` : `وظيفة تنتظر الموافقة: ${j.title}`, date: j.createdAt })),
-          ...users.map(u => ({
-            type: u.role === 'employer' ? 'company' : 'user',
-            entityId: u._id,
-            searchText: u.company || u.name,
-            text: `${u.role === 'employer' ? 'شركة' : 'مستخدم'} جديد: ${u.company || u.name}`,
-            date: u.createdAt,
+          ...companies.map(company => ({
+            type: 'company',
+            entityId: company._id,
+            searchText: company.company || company.name,
+            text: `شركة جديدة: ${company.company || company.name}`,
+            date: company.createdAt,
           })),
           ...reps.map(r => ({ type: 'report', entityId: r._id, searchText: r.subject, text: `${r.type === 'complaint' ? 'شكوى' : 'مقترح'}: ${r.subject}`, date: r.createdAt })),
         ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, limit);
       })(),
-      User.countDocuments(newUsersFilter),
       User.countDocuments(pendingCompanyFilter),
       Job.countDocuments(pendingJobFilter),
       Report.countDocuments(pendingReportFilter),
@@ -759,7 +677,6 @@ const getAdminNotifications = async (req, res, next) => {
 
     const notificationItems = [
       ...recentAll.map(item => ({ ...item, notificationType: item.type })),
-      ...newUsers.map(item => ({ ...item, notificationType: 'user' })),
       ...newCompanies.map(item => ({ ...item, notificationType: 'company' })),
       ...pendingJobs.map(item => ({ ...item, notificationType: 'job' })),
       ...reports.map(item => ({ ...item, notificationType: 'report' })),
@@ -786,7 +703,6 @@ const getAdminNotifications = async (req, res, next) => {
       });
     }).filter(item => !item.isDeleted);
     const visibleRecentAll = visible(recentAll);
-    const visibleUsers = visible(newUsers, 'user');
     const visibleCompanies = visible(newCompanies, 'company');
     const visibleJobs = visible(pendingJobs, 'job');
     const visibleReports = visible(reports, 'report');
@@ -797,7 +713,7 @@ const getAdminNotifications = async (req, res, next) => {
       $or: [{ isRead: true }, { isDeleted: true }],
     }).select('notificationKey').lean();
     const readOrDeletedKeys = readOrDeletedStates.map(s => s.notificationKey);
-    const readOrDeletedIdsByType = Object.fromEntries(['user', 'company', 'job', 'report'].map(type => [
+    const readOrDeletedIdsByType = Object.fromEntries(['company', 'job', 'report'].map(type => [
       type,
       readOrDeletedKeys
         .filter(key => key.startsWith(`${type}:`))
@@ -807,15 +723,14 @@ const getAdminNotifications = async (req, res, next) => {
       ? { _id: { $nin: toObjectIds(readOrDeletedIdsByType[type]) } }
       : {};
 
-    const [unreadUsersCount, unreadCompaniesCount, unreadJobsCount, unreadReportsCount] = await Promise.all([
-      User.countDocuments({ ...newUsersFilter, ...excludeReadOrDeleted('user') }),
+    const [unreadCompaniesCount, unreadJobsCount, unreadReportsCount] = await Promise.all([
       User.countDocuments({ ...pendingCompanyFilter, ...excludeReadOrDeleted('company') }),
       Job.countDocuments({ ...pendingJobFilter, ...excludeReadOrDeleted('job') }),
       Report.countDocuments({ ...pendingReportFilter, ...excludeReadOrDeleted('report') }),
     ]);
 
-    const totalUnread = unreadUsersCount + unreadCompaniesCount + unreadJobsCount + unreadReportsCount;
-    const totalPending = pendingCompaniesCount + pendingJobsCount + pendingReportsCount + newUsersCount;
+    const totalUnread = unreadCompaniesCount + unreadJobsCount + unreadReportsCount;
+    const totalPending = pendingCompaniesCount + pendingJobsCount + pendingReportsCount;
 
     res.status(200).json({
       success: true,
@@ -823,19 +738,16 @@ const getAdminNotifications = async (req, res, next) => {
       totalPending: totalUnread,
       counts: {
         all: totalPending,
-        users: newUsersCount,
         companies: pendingCompaniesCount,
         jobs: pendingJobsCount,
         reports: pendingReportsCount,
       },
       unreadCounts: {
         all: totalUnread,
-        users: unreadUsersCount,
         companies: unreadCompaniesCount,
         jobs: unreadJobsCount,
         reports: unreadReportsCount,
       },
-      newUsers: visibleUsers,
       newCompanies: visibleCompanies,
       pendingJobs: visibleJobs,
       reports: visibleReports,
@@ -848,14 +760,13 @@ const getAdminNotifications = async (req, res, next) => {
 
 const getAdminNotificationCount = async (req, res, next) => {
   try {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const readOrDeletedStates = await AdminNotificationState.find({
       admin: req.user._id,
       $or: [{ isRead: true }, { isDeleted: true }],
     }).select('notificationKey isRead isDeleted').lean();
 
     const readOrDeletedKeys = readOrDeletedStates.map(s => s.notificationKey);
-    const readOrDeletedIdsByType = Object.fromEntries(['user', 'company', 'job', 'report'].map(type => [
+    const readOrDeletedIdsByType = Object.fromEntries(['company', 'job', 'report'].map(type => [
       type,
       readOrDeletedKeys
         .filter(key => key.startsWith(`${type}:`))
@@ -865,12 +776,7 @@ const getAdminNotificationCount = async (req, res, next) => {
       ? { _id: { $nin: toObjectIds(readOrDeletedIdsByType[type]) } }
       : {};
 
-    const [newUsers, companies, jobs, reports] = await Promise.all([
-      User.countDocuments({
-        role: 'job_seeker',
-        createdAt: { $gte: weekAgo },
-        ...excludeReadOrDeleted('user'),
-      }),
+    const [companies, jobs, reports] = await Promise.all([
       User.countDocuments({
         role: 'employer',
         accountStatus: 'reviewing',
@@ -886,7 +792,7 @@ const getAdminNotificationCount = async (req, res, next) => {
       }),
     ]);
 
-    const unreadCount = newUsers + companies + jobs + reports;
+    const unreadCount = companies + jobs + reports;
 
     res.status(200).json({
       success: true,
@@ -902,7 +808,7 @@ const updateAdminNotificationStates = async (req, res, next) => {
   try {
     const { keys, action } = req.body;
     const allowedActions = ['read', 'unread', 'delete'];
-    const validKey = /^(user|company|job|report):[a-f\d]{24}$/i;
+    const validKey = /^(company|job|report):[a-f\d]{24}$/i;
 
     if (!Array.isArray(keys) || keys.length === 0 || keys.length > 200 || !keys.every(key => typeof key === 'string' && validKey.test(key))) {
       return res.status(400).json({ success: false, message: 'قائمة الإشعارات المحددة غير صالحة' });
@@ -931,8 +837,7 @@ const updateAdminNotificationStates = async (req, res, next) => {
 
 module.exports = {
   getDashboardStats,
-  getAllUsers,
-  updateUserStatus,
+  searchAdminAccounts,
   getAllCompanies,
   updateCompanyStatus,
   getAdminAllJobs,

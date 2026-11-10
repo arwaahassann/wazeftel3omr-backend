@@ -3,8 +3,7 @@ const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const {
   getDashboardStats,
-  getAllUsers,
-  updateUserStatus,
+  searchAdminAccounts,
   getAllCompanies,
   updateCompanyStatus,
   getAdminAllJobs,
@@ -35,9 +34,8 @@ router.use(protect, adminOnly);
 // 1. إحصائيات الداشبورد الرئيسية
 router.get('/stats', getDashboardStats);
 
-// 2. إدارة المستخدمين
-router.get('/users', getAllUsers);
-router.put('/users/:id/status', updateUserStatus);
+// 2. بحث حسابات للقراءة فقط (مطلوب للبحث العام بلوحة الأدمن)
+router.get('/account-search', searchAdminAccounts);
 
 // 3. إدارة الشركات
 router.get('/companies', getAllCompanies);
