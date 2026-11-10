@@ -9,6 +9,7 @@ const Message = require('../models/Message');
 const SavedJob = require('../models/SavedJob');
 const AdminNotificationState = require('../models/AdminNotificationState');
 const sendJobStatusEmail = require('../utils/sendJobStatusEmail');
+const { countUniqueApplications, getUniqueApplicationIds } = require('../utils/countUniqueApplications');
 
 // @desc    إحصائيات الداشبورد الشاملة
 // @route   GET /api/admin/stats
@@ -43,8 +44,8 @@ const getDashboardStats = async (req, res, next) => {
       Job.countDocuments({ status: 'closed' }),
       Job.countDocuments({ status: 'rejected' }),
       // عدد الطلبات الحقيقية (بعد استبعاد الوظائف المحذوفة)
-      Application.countDocuments({ job: { $in: activeJobIds } }),
-      Application.countDocuments({ job: { $in: activeJobIds }, createdAt: { $gte: oneWeekAgo } }),
+      countUniqueApplications({ job: { $in: activeJobIds } }),
+      countUniqueApplications({ job: { $in: activeJobIds }, createdAt: { $gte: oneWeekAgo } }),
       User.find({ role: { $in: ['job_seeker', 'employer'] } })
         .select('name email role company createdAt')
         .sort({ createdAt: -1, _id: -1 })
@@ -462,17 +463,19 @@ const getAdminAllApplications = async (req, res, next) => {
       filter.$or = [{ name: regex }, { email: regex }, { phone: regex }];
     }
 
-    const [applications, total] = await Promise.all([
-      Application.find(filter)
-        .select('-cvUrl')
-        .populate('user', 'name email avatar phone')
-        .populate('job', 'title company location')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum)
-        .lean(),
-      Application.countDocuments(filter),
+    const [uniqueApplications, total] = await Promise.all([
+      getUniqueApplicationIds(filter, skip, limitNum),
+      countUniqueApplications(filter),
     ]);
+
+    const applications = await Application.find({
+      _id: { $in: uniqueApplications.map((application) => application._id) },
+    })
+      .select('-cvUrl')
+      .populate('user', 'name email avatar phone')
+      .populate('job', 'title company location')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.status(200).json({
       success: true,
