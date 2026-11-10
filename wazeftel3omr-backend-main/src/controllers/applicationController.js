@@ -181,6 +181,16 @@ const getApplicationStats = async (req, res, next) => {
 
     const stats = await Application.aggregate([
       { $match: { user: userId } },
+      // استبعاد الطلبات التي وظيفتها محذوفة
+      {
+        $lookup: {
+          from: 'jobs',
+          localField: 'job',
+          foreignField: '_id',
+          as: 'jobDoc',
+        },
+      },
+      { $match: { jobDoc: { $ne: [] } } },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]);
 
@@ -533,8 +543,9 @@ const getAllEmployerApplicants = async (req, res, next) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
     const skip = (pageNum - 1) * limitNum;
 
-    const myJobs = await Job.find({ postedBy: req.user._id }).select('_id').lean();
-    const jobIds = myJobs.map((j) => j._id);
+    // استبعاد الوظائف المحذوفة من القائمة والعدد
+    const myJobIds = await Job.find({ postedBy: req.user._id }).distinct('_id');
+    const jobIds = myJobIds;
 
     const filter = { job: { $in: jobIds } };
     if (status && status !== 'all') {

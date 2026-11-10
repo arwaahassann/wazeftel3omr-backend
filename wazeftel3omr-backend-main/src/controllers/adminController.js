@@ -18,6 +18,9 @@ const getDashboardStats = async (req, res, next) => {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
+    // جلب activeJobIds لاستبعاد طلبات الوظائف المحذوفة من العدد
+    const activeJobIds = await Job.distinct('_id');
+
     const [totalUsers, totalEmployers, newUsersThisWeek, newEmployersThisWeek,
       totalJobs, activeJobs, reviewingJobs, closedJobs, rejectedJobs,
       totalApplications, newApplicationsThisWeek, recentUsers, recentJobs,
@@ -39,9 +42,9 @@ const getDashboardStats = async (req, res, next) => {
       Job.countDocuments({ status: 'reviewing' }),
       Job.countDocuments({ status: 'closed' }),
       Job.countDocuments({ status: 'rejected' }),
-      Application.countDocuments({}).hint('_id_'),
-      Application.countDocuments({ createdAt: { $gte: oneWeekAgo } })
-        .hint('createdAt_-1__id_-1'),
+      // عدد الطلبات الحقيقية (بعد استبعاد الوظائف المحذوفة)
+      Application.countDocuments({ job: { $in: activeJobIds } }),
+      Application.countDocuments({ job: { $in: activeJobIds }, createdAt: { $gte: oneWeekAgo } }),
       User.find({ role: { $in: ['job_seeker', 'employer'] } })
         .select('name email role company createdAt')
         .sort({ createdAt: -1, _id: -1 })
@@ -605,18 +608,23 @@ const deleteAdminJob = async (req, res, next) => {
   }
 };
 
+const toObjectIds = ids => (Array.isArray(ids) ? ids : [])
+  .filter(id => mongoose.Types.ObjectId.isValid(id))
+  .map(id => new mongoose.Types.ObjectId(id));
+
 // @desc    جلب إشعارات الأدمن المقسمة حسب النوع
 // @route   GET /api/admin/notifications
 // @access  Private (Admin)
 const getAdminNotifications = async (req, res, next) => {
   try {
-    const limit = 8; // آخر 8 لكل قسم
+    const limit = 20; // جلب حتى 20 إشعار
 
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const deletedKeys = await AdminNotificationState.distinct('notificationKey', {
       admin: req.user._id,
       isDeleted: true,
     });
+
     const deletedIdsByType = Object.fromEntries(['user', 'company', 'job', 'report'].map(type => [
       type,
       deletedKeys
@@ -624,7 +632,7 @@ const getAdminNotifications = async (req, res, next) => {
         .map(key => key.slice(type.length + 1)),
     ]));
     const excludeDeleted = type => deletedIdsByType[type].length
-      ? { _id: { $nin: deletedIdsByType[type] } }
+      ? { _id: { $nin: toObjectIds(deletedIdsByType[type]) } }
       : {};
     const newUsersFilter = {
       role: 'job_seeker',
@@ -742,7 +750,7 @@ const getAdminNotifications = async (req, res, next) => {
         .map(key => key.slice(type.length + 1)),
     ]));
     const excludeReadOrDeleted = type => readOrDeletedIdsByType[type].length
-      ? { _id: { $nin: readOrDeletedIdsByType[type] } }
+      ? { _id: { $nin: toObjectIds(readOrDeletedIdsByType[type]) } }
       : {};
 
     const [unreadUsersCount, unreadCompaniesCount, unreadJobsCount, unreadReportsCount] = await Promise.all([
@@ -800,7 +808,7 @@ const getAdminNotificationCount = async (req, res, next) => {
         .map(key => key.slice(type.length + 1)),
     ]));
     const excludeReadOrDeleted = type => readOrDeletedIdsByType[type].length
-      ? { _id: { $nin: readOrDeletedIdsByType[type] } }
+      ? { _id: { $nin: toObjectIds(readOrDeletedIdsByType[type]) } }
       : {};
 
     const [newUsers, companies, jobs, reports] = await Promise.all([
