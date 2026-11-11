@@ -201,7 +201,7 @@ const getAllCompanies = async (req, res, next) => {
 
     const [companies, total] = await Promise.all([
       User.find(filter)
-        .select('name email company companyWebsite companyIndustry location phone accountStatus createdAt avatar')
+        .select('name email company companyWebsite companyIndustry location detailedAddress phone accountStatus createdAt avatar companyDocuments.commercialRegister.fileName companyDocuments.commercialRegister.mimeType companyDocuments.commercialRegister.uploadedAt companyDocuments.taxCard.fileName companyDocuments.taxCard.mimeType companyDocuments.taxCard.uploadedAt')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
@@ -235,7 +235,7 @@ const updateCompanyStatus = async (req, res, next) => {
 
     if (status === 'active') {
       const companyRecord = await User.findOne({ _id: req.params.id, role: 'employer' })
-        .select('phone')
+        .select('phone location detailedAddress companyDocuments.commercialRegister.fileName companyDocuments.commercialRegister.mimeType companyDocuments.taxCard.fileName companyDocuments.taxCard.mimeType')
         .lean();
       if (!companyRecord) {
         return res.status(404).json({ success: false, message: 'الشركة غير موجودة' });
@@ -246,6 +246,14 @@ const updateCompanyStatus = async (req, res, next) => {
         return res.status(400).json({
           success: false,
           message: 'لا يمكن اعتماد الشركة قبل إضافة رقم التواصل الأساسي الصحيح في إعدادات حسابها',
+        });
+      }
+      if (!companyRecord.location || !companyRecord.detailedAddress
+        || !companyRecord.companyDocuments?.commercialRegister?.fileName
+        || !companyRecord.companyDocuments?.taxCard?.fileName) {
+        return res.status(400).json({
+          success: false,
+          message: 'لا يمكن اعتماد الشركة قبل استكمال العنوان التفصيلي ورفع السجل التجاري والبطاقة الضريبية',
         });
       }
     }
@@ -259,6 +267,27 @@ const updateCompanyStatus = async (req, res, next) => {
     if (!company) return res.status(404).json({ success: false, message: 'الشركة غير موجودة' });
 
     res.status(200).json({ success: true, message: 'تم تحديث حالة الشركة بنجاح', company });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getAdminCompanyDocument = async (req, res, next) => {
+  try {
+    const { documentType } = req.params;
+    if (!['commercialRegister', 'taxCard'].includes(documentType)) {
+      return res.status(400).json({ success: false, message: 'نوع المستند غير صالح' });
+    }
+
+    const company = await User.findOne({ _id: req.params.id, role: 'employer' })
+      .select(`companyDocuments.${documentType}.fileName companyDocuments.${documentType}.mimeType companyDocuments.${documentType}.uploadedAt +companyDocuments.${documentType}.dataUrl`)
+      .lean();
+    const document = company?.companyDocuments?.[documentType];
+    if (!document?.dataUrl) {
+      return res.status(404).json({ success: false, message: 'مستند الشركة غير موجود' });
+    }
+
+    res.status(200).json({ success: true, document });
   } catch (error) {
     next(error);
   }
@@ -923,6 +952,7 @@ module.exports = {
   searchAdminAccounts,
   getAllCompanies,
   updateCompanyStatus,
+  getAdminCompanyDocument,
   getAdminSeekers,
   updateAdminSeekerStatus,
   getAdminAllJobs,

@@ -57,6 +57,26 @@ const userSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    detailedAddress: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: [300, 'العنوان التفصيلي لا يمكن أن يتجاوز 300 حرف'],
+    },
+    companyDocuments: {
+      commercialRegister: {
+        fileName: { type: String, trim: true, maxlength: 160 },
+        mimeType: { type: String, enum: ['application/pdf', 'image/jpeg', 'image/png'] },
+        dataUrl: { type: String, select: false },
+        uploadedAt: Date,
+      },
+      taxCard: {
+        fileName: { type: String, trim: true, maxlength: 160 },
+        mimeType: { type: String, enum: ['application/pdf', 'image/jpeg', 'image/png'] },
+        dataUrl: { type: String, select: false },
+        uploadedAt: Date,
+      },
+    },
     phone: {
       type: String,
       default: '',

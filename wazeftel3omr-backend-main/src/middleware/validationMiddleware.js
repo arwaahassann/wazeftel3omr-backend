@@ -52,7 +52,7 @@ const { normalizePhoneInput } = require('../utils/accountIdentity');
 // الحقول الإلزامية: name, email, password, role, phone, jobTitle, company (للشركات)
 // ─────────────────────────────────────────────────────────
 const validateRegister = (req, res, next) => {
-  const { name, email, password, role, company, phone, jobTitle } = req.body;
+  const { name, email, password, role, company, phone, jobTitle, location, detailedAddress } = req.body;
   const accountRole = String(role || '').trim();
 
   if (isBlank(name))     return missing(res, 'الاسم الكامل');
@@ -78,6 +78,17 @@ const validateRegister = (req, res, next) => {
   // إذا كان صاحب عمل (Employer)، يجب إدخال اسم الشركة
   if (accountRole === 'employer' && isBlank(company)) {
     return missing(res, 'اسم الشركة (مطلوب لحسابات أصحاب العمل)');
+  }
+  if (accountRole === 'employer' && typeof location !== 'string') {
+    return res.status(400).json({ success: false, message: 'صيغة موقع الشركة غير صحيحة' });
+  }
+  if (accountRole === 'employer' && typeof detailedAddress !== 'string') {
+    return res.status(400).json({ success: false, message: 'صيغة العنوان التفصيلي غير صحيحة' });
+  }
+  if (accountRole === 'employer' && isBlank(location)) return missing(res, 'مدينة / مقر الشركة');
+  if (accountRole === 'employer' && isBlank(detailedAddress)) return missing(res, 'العنوان التفصيلي للشركة');
+  if (detailedAddress !== undefined && String(detailedAddress).length > 300) {
+    return res.status(400).json({ success: false, message: 'العنوان التفصيلي لا يمكن أن يتجاوز 300 حرف' });
   }
 
   next();
@@ -221,7 +232,7 @@ const validateResetPassword = (req, res, next) => {
 const validateUpdateProfile = (req, res, next) => {
   const { email, phone, name, company } = req.body;
 
-  const textFields = ['name', 'jobTitle', 'location', 'bio', 'company', 'companyWebsite', 'companyIndustry'];
+  const textFields = ['name', 'jobTitle', 'location', 'detailedAddress', 'bio', 'company', 'companyWebsite', 'companyIndustry'];
   for (const field of textFields) {
     if (req.body[field] !== undefined && typeof req.body[field] !== 'string') {
       return res.status(400).json({ success: false, message: `صيغة الحقل (${field}) غير صحيحة` });
@@ -235,6 +246,12 @@ const validateUpdateProfile = (req, res, next) => {
   }
   if (req.user?.role === 'employer' && isBlank(req.body.companyIndustry)) {
     return missing(res, 'القطاع والمجال');
+  }
+  if (req.user?.role === 'employer' && isBlank(req.body.detailedAddress)) {
+    return missing(res, 'العنوان التفصيلي للشركة');
+  }
+  if (req.body.detailedAddress !== undefined && String(req.body.detailedAddress).length > 300) {
+    return res.status(400).json({ success: false, message: 'العنوان التفصيلي لا يمكن أن يتجاوز 300 حرف' });
   }
 
   if (email !== undefined) {

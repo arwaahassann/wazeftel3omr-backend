@@ -3,6 +3,7 @@ const SavedJob = require('../models/SavedJob');
 const { isStrongPassword, PASSWORD_RULE_MSG } = require('../middleware/validationMiddleware');
 const { getRoleLabel, buildPhoneMatch, normalizePhoneInput } = require('../utils/accountIdentity');
 const withCompanyProfileLogo = require('../utils/withCompanyProfileLogo');
+const { getCompanyDocumentMetadata, validateCompanyDocument } = require('../utils/companyDocuments');
 
 // @desc    جلب بيانات الملف الشخصي للمستخدم الحالي
 // @route   GET /api/users/profile
@@ -13,7 +14,14 @@ const getUserProfile = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
     }
-    res.status(200).json({ success: true, user });
+    const userData = user.toObject();
+    if (user.role === 'employer') {
+      userData.companyDocuments = {
+        commercialRegister: getCompanyDocumentMetadata(user.companyDocuments?.commercialRegister),
+        taxCard: getCompanyDocumentMetadata(user.companyDocuments?.taxCard),
+      };
+    }
+    res.status(200).json({ success: true, user: userData });
   } catch (error) {
     next(error);
   }
@@ -24,7 +32,10 @@ const getUserProfile = async (req, res, next) => {
 // @access  Private
 const updateUserProfile = async (req, res, next) => {
   try {
-    const { name, jobTitle, phone, location, bio, cvUrl, skills, experiences, avatar, company, companyWebsite, companyIndustry, email } = req.body;
+    const {
+      name, jobTitle, phone, location, detailedAddress, bio, cvUrl, skills, experiences, avatar,
+      company, companyWebsite, companyIndustry, email,
+    } = req.body;
 
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -75,6 +86,9 @@ const updateUserProfile = async (req, res, next) => {
     if (jobTitle !== undefined) user.jobTitle = jobTitle.trim();
     if (phone !== undefined) user.phone = normalizedPhone;
     if (location !== undefined) user.location = location.trim();
+    if (user.role === 'employer' && detailedAddress !== undefined) {
+      user.detailedAddress = detailedAddress.trim();
+    }
     if (bio !== undefined) user.bio = bio.trim();
     if (cvUrl !== undefined) user.cvUrl = cvUrl;
     if (skills !== undefined) user.skills = skills;
@@ -99,6 +113,7 @@ const updateUserProfile = async (req, res, next) => {
         company: user.company || '',
         avatar: user.avatar || '',
         location: user.location || '',
+        detailedAddress: user.detailedAddress || '',
         phone: user.phone || '',
         bio: user.bio || '',
         skills: user.skills || [],
@@ -108,6 +123,63 @@ const updateUserProfile = async (req, res, next) => {
         companyIndustry: user.companyIndustry || '',
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const uploadCompanyDocument = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'employer') {
+      return res.status(403).json({ success: false, message: 'رفع مستندات الشركة متاح لحسابات الشركات فقط' });
+    }
+
+    const { documentType } = req.params;
+    if (!['commercialRegister', 'taxCard'].includes(documentType)) {
+      return res.status(400).json({ success: false, message: 'نوع المستند غير صالح' });
+    }
+
+    const result = validateCompanyDocument(req.body);
+    if (result.error) {
+      return res.status(400).json({ success: false, message: result.error });
+    }
+
+    const field = `companyDocuments.${documentType}`;
+    const user = await User.findOneAndUpdate(
+      { _id: req.user._id, role: 'employer' },
+      { $set: { [field]: result.document } },
+      { new: true, select: `companyDocuments.${documentType}.fileName companyDocuments.${documentType}.mimeType companyDocuments.${documentType}.uploadedAt` }
+    ).lean();
+
+    if (!user) return res.status(404).json({ success: false, message: 'حساب الشركة غير موجود' });
+    res.status(200).json({
+      success: true,
+      document: getCompanyDocumentMetadata(user.companyDocuments?.[documentType]),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getCompanyDocument = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'employer') {
+      return res.status(403).json({ success: false, message: 'مستندات الشركة متاحة لحسابات الشركات فقط' });
+    }
+    const { documentType } = req.params;
+    if (!['commercialRegister', 'taxCard'].includes(documentType)) {
+      return res.status(400).json({ success: false, message: 'نوع المستند غير صالح' });
+    }
+
+    const user = await User.findOne({ _id: req.user._id, role: 'employer' })
+      .select(`companyDocuments.${documentType}.fileName companyDocuments.${documentType}.mimeType companyDocuments.${documentType}.uploadedAt +companyDocuments.${documentType}.dataUrl`)
+      .lean();
+    const document = user?.companyDocuments?.[documentType];
+    if (!document?.dataUrl) {
+      return res.status(404).json({ success: false, message: 'المستند غير موجود' });
+    }
+
+    res.status(200).json({ success: true, document });
   } catch (error) {
     next(error);
   }
@@ -237,6 +309,8 @@ const getSavedJobs = async (req, res, next) => {
 module.exports = {
   getUserProfile,
   updateUserProfile,
+  uploadCompanyDocument,
+  getCompanyDocument,
   changePassword,
   toggleSaveJob,
   getSavedJobs,

@@ -15,7 +15,7 @@ const generateToken = (id) => {
 // @access  Public
 const registerUser = async (req, res, next) => {
   try {
-    const { name, email, password, role, phone, jobTitle, company } = req.body;
+    const { name, email, password, role, phone, jobTitle, company, location, detailedAddress } = req.body;
     const accountRole = role || 'job_seeker';
 
     if (accountRole === 'employer') {
@@ -74,6 +74,8 @@ const registerUser = async (req, res, next) => {
       phone: phone || '',
       jobTitle: jobTitle || (accountRole === 'employer' ? 'مدير توظيف' : 'باحث عن عمل'),
       company: company || '',
+      location: location || '',
+      detailedAddress: detailedAddress || '',
       accountStatus: accountRole === 'employer' ? 'reviewing' : 'active',
     });
 
@@ -98,6 +100,7 @@ const registerUser = async (req, res, next) => {
         company: user.company || '',
         avatar: user.avatar || '',
         location: user.location || '',
+        detailedAddress: user.detailedAddress || '',
         phone: user.phone || '',
       },
     });

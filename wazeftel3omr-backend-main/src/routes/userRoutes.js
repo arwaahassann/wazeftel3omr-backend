@@ -3,6 +3,8 @@ const router = express.Router();
 const {
   getUserProfile,
   updateUserProfile,
+  uploadCompanyDocument,
+  getCompanyDocument,
   changePassword,
   toggleSaveJob,
   getSavedJobs,
@@ -18,6 +20,8 @@ router.get('/', getUserProfile);
 router.get('/profile', getUserProfile);
 router.put('/', validateUpdateProfile, updateUserProfile);
 router.put('/profile', validateUpdateProfile, updateUserProfile);
+router.put('/company-documents/:documentType', uploadCompanyDocument);
+router.get('/company-documents/:documentType', getCompanyDocument);
 router.put('/change-password', changePassword);
 
 // 🔖 مسارات المفضلة

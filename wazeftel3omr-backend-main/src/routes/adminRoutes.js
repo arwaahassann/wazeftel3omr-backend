@@ -6,6 +6,7 @@ const {
   searchAdminAccounts,
   getAllCompanies,
   updateCompanyStatus,
+  getAdminCompanyDocument,
   getAdminSeekers,
   updateAdminSeekerStatus,
   getAdminAllJobs,
@@ -41,6 +42,7 @@ router.get('/account-search', searchAdminAccounts);
 
 // 3. إدارة الشركات
 router.get('/companies', getAllCompanies);
+router.get('/companies/:id/documents/:documentType', getAdminCompanyDocument);
 router.put('/companies/:id/status', updateCompanyStatus);
 
 // 4. إدارة الباحثين عن عمل فقط
