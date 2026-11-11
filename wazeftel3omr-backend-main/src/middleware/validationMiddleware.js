@@ -79,14 +79,14 @@ const validateRegister = (req, res, next) => {
   if (accountRole === 'employer' && isBlank(company)) {
     return missing(res, 'اسم الشركة (مطلوب لحسابات أصحاب العمل)');
   }
-  if (accountRole === 'employer' && typeof location !== 'string') {
-    return res.status(400).json({ success: false, message: 'صيغة موقع الشركة غير صحيحة' });
+  if (typeof location !== 'string') {
+    return res.status(400).json({ success: false, message: 'صيغة المحافظة / المدينة غير صحيحة' });
   }
-  if (accountRole === 'employer' && typeof detailedAddress !== 'string') {
+  if (typeof detailedAddress !== 'string') {
     return res.status(400).json({ success: false, message: 'صيغة العنوان التفصيلي غير صحيحة' });
   }
-  if (accountRole === 'employer' && isBlank(location)) return missing(res, 'مدينة / مقر الشركة');
-  if (accountRole === 'employer' && isBlank(detailedAddress)) return missing(res, 'العنوان التفصيلي للشركة');
+  if (isBlank(location)) return missing(res, 'المحافظة / المدينة');
+  if (isBlank(detailedAddress)) return missing(res, 'العنوان التفصيلي');
   if (detailedAddress !== undefined && String(detailedAddress).length > 300) {
     return res.status(400).json({ success: false, message: 'العنوان التفصيلي لا يمكن أن يتجاوز 300 حرف' });
   }
@@ -247,8 +247,8 @@ const validateUpdateProfile = (req, res, next) => {
   if (req.user?.role === 'employer' && isBlank(req.body.companyIndustry)) {
     return missing(res, 'القطاع والمجال');
   }
-  if (req.user?.role === 'employer' && isBlank(req.body.detailedAddress)) {
-    return missing(res, 'العنوان التفصيلي للشركة');
+  if (isBlank(req.body.detailedAddress)) {
+    return missing(res, 'العنوان التفصيلي');
   }
   if (req.body.detailedAddress !== undefined && String(req.body.detailedAddress).length > 300) {
     return res.status(400).json({ success: false, message: 'العنوان التفصيلي لا يمكن أن يتجاوز 300 حرف' });

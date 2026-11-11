@@ -86,7 +86,7 @@ const updateUserProfile = async (req, res, next) => {
     if (jobTitle !== undefined) user.jobTitle = jobTitle.trim();
     if (phone !== undefined) user.phone = normalizedPhone;
     if (location !== undefined) user.location = location.trim();
-    if (user.role === 'employer' && detailedAddress !== undefined) {
+    if (detailedAddress !== undefined) {
       user.detailedAddress = detailedAddress.trim();
     }
     if (bio !== undefined) user.bio = bio.trim();

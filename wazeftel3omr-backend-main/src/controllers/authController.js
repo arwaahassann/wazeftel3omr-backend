@@ -75,7 +75,7 @@ const registerUser = async (req, res, next) => {
       jobTitle: jobTitle || (accountRole === 'employer' ? 'مدير توظيف' : 'باحث عن عمل'),
       company: company || '',
       location: location || '',
-      detailedAddress: detailedAddress || '',
+      detailedAddress: detailedAddress.trim(),
       accountStatus: accountRole === 'employer' ? 'reviewing' : 'active',
     });
 
