@@ -131,7 +131,7 @@ const loginUser = async (req, res, next) => {
     if (user.accountStatus === 'suspended') {
       return res.status(403).json({
         success: false,
-        message: 'تم إيقاف هذا الحساب. تواصلي مع إدارة المنصة.',
+        message: 'تم إيقاف هذا الحساب. يرجى التواصل مع إدارة المنصة.',
       });
     }
 

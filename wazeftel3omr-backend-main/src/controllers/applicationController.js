@@ -303,7 +303,7 @@ const updateApplicationStatus = async (req, res, next) => {
           && latest?.decisionEmailSent
           && latest?.decisionNotificationSent
           ? 'تم اعتماد القرار النهائي لهذا المتقدم بالفعل، ولا يمكن تغييره.'
-          : 'يوجد إجراء قيد التنفيذ لهذا المتقدم. حاولي مرة أخرى بعد لحظات.',
+          : 'يوجد إجراء قيد التنفيذ لهذا المتقدم. يرجى المحاولة مرة أخرى بعد لحظات.',
       });
     }
     lockedApplicationId = applicationId;
@@ -380,7 +380,7 @@ const updateApplicationStatus = async (req, res, next) => {
         status,
         emailSent: application.decisionEmailSent === true,
         notificationSent: false,
-        message: 'تم تحديث حالة المتقدم، لكن تعذر إنشاء الإشعار داخل المنصة. أعيدي إرسال القرار نفسه لإكمال الإشعار.',
+        message: 'تم تحديث حالة المتقدم، لكن تعذر إنشاء الإشعار داخل المنصة. يرجى إعادة إرسال القرار نفسه لإكمال الإشعار.',
       });
     }
 
@@ -453,7 +453,7 @@ const updateApplicationStatus = async (req, res, next) => {
       const emailFailureMessages = {
         SMTP_NOT_CONFIGURED: 'بيانات البريد المرسل الموجودة في إعدادات الخادم غير مكتملة.',
         RECIPIENT_REJECTED: 'لا يوجد بريد إلكتروني صالح للمتقدم.',
-        DELIVERY_FAILED: 'تعذر إرسال البريد من حساب المنصة. تحققي من بيانات البريد في إعدادات الخادم ثم أعيدي المحاولة.',
+        DELIVERY_FAILED: 'تعذر إرسال البريد من حساب المنصة. يرجى التحقق من بيانات البريد في إعدادات الخادم ثم المحاولة مجددًا.',
       };
       return res.status(502).json({
         success: false,
