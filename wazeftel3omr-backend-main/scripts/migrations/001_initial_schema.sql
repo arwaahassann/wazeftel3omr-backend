@@ -1,0 +1,240 @@
+CREATE TABLE IF NOT EXISTS users (
+  id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  name VARCHAR(50) NOT NULL,
+  email VARCHAR(254) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role ENUM('job_seeker', 'employer', 'admin') NOT NULL DEFAULT 'job_seeker',
+  job_title VARCHAR(255) NOT NULL DEFAULT '',
+  company VARCHAR(255) NOT NULL DEFAULT '',
+  company_website VARCHAR(2048) NOT NULL DEFAULT '',
+  company_industry VARCHAR(255) NOT NULL DEFAULT '',
+  location VARCHAR(500) NOT NULL DEFAULT '',
+  detailed_address VARCHAR(300) NOT NULL DEFAULT '',
+  phone VARCHAR(50) NOT NULL DEFAULT '',
+  bio VARCHAR(500) NOT NULL DEFAULT '',
+  cv_url TEXT NOT NULL,
+  google_id VARCHAR(255) NULL,
+  gmail_sender_email VARCHAR(254) NULL,
+  gmail_refresh_token_encrypted TEXT NULL,
+  gmail_connected_at DATETIME(3) NULL,
+  avatar TEXT NULL,
+  otp_code VARCHAR(32) NULL,
+  otp_expire DATETIME(3) NULL,
+  is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+  reset_password_token VARCHAR(255) NULL,
+  reset_password_expire DATETIME(3) NULL,
+  last_login DATETIME(3) NULL,
+  account_status ENUM('active', 'reviewing', 'suspended') NOT NULL DEFAULT 'active',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_users_email (email),
+  KEY idx_users_phone_role (phone, role),
+  KEY idx_users_role_status_created (role, account_status, created_at),
+  KEY idx_users_role_created (role, created_at),
+  KEY idx_users_created_id (created_at, id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_skills (
+  user_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  position INT UNSIGNED NOT NULL,
+  skill TEXT NOT NULL,
+  PRIMARY KEY (user_id, position),
+  CONSTRAINT fk_user_skills_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_experiences (
+  user_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  position INT UNSIGNED NOT NULL,
+  title TEXT NOT NULL,
+  company TEXT NOT NULL,
+  period TEXT NOT NULL,
+  PRIMARY KEY (user_id, position),
+  CONSTRAINT fk_user_experiences_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS company_documents (
+  user_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  document_type ENUM('commercialRegister', 'taxCard') NOT NULL,
+  file_name VARCHAR(160) NOT NULL,
+  mime_type ENUM('application/pdf', 'image/jpeg', 'image/png') NOT NULL,
+  data_url LONGTEXT NOT NULL,
+  uploaded_at DATETIME(3) NULL,
+  PRIMARY KEY (user_id, document_type),
+  CONSTRAINT fk_company_documents_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS jobs (
+  id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  title VARCHAR(100) NOT NULL,
+  company VARCHAR(100) NOT NULL,
+  logo_url TEXT NOT NULL,
+  location VARCHAR(500) NOT NULL,
+  job_type VARCHAR(255) NOT NULL DEFAULT 'دوام كامل',
+  category VARCHAR(255) NOT NULL DEFAULT 'تطوير البرمجيات',
+  description TEXT NOT NULL,
+  salary VARCHAR(255) NOT NULL DEFAULT 'قابل للمفاوضة',
+  level VARCHAR(255) NOT NULL DEFAULT 'متوسط',
+  experience VARCHAR(255) NOT NULL DEFAULT '1-3 سنوات',
+  qualifications TEXT NOT NULL,
+  specialty VARCHAR(255) NOT NULL DEFAULT '',
+  degree VARCHAR(255) NOT NULL DEFAULT 'لا يشترط شهادة / بدون مؤهل',
+  work_time VARCHAR(255) NOT NULL DEFAULT 'صباحي',
+  closing_date DATE NULL,
+  status ENUM('active', 'closed', 'reviewing', 'rejected', 'deletion_pending') NOT NULL DEFAULT 'reviewing',
+  deletion_requested BOOLEAN NOT NULL DEFAULT FALSE,
+  posted_by CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_jobs_status_created_id (status, created_at, id),
+  KEY idx_jobs_created_id (created_at, id),
+  KEY idx_jobs_posted_created (posted_by, created_at),
+  KEY idx_jobs_posted_status (posted_by, status),
+  KEY idx_jobs_category_status (category, status),
+  KEY idx_jobs_location_status (location(191), status),
+  KEY idx_jobs_deletion_status (deletion_requested, status),
+  KEY idx_jobs_status_closing_date (status, closing_date),
+  CONSTRAINT fk_jobs_posted_by FOREIGN KEY (posted_by) REFERENCES users (id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS job_requirements (
+  job_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  position INT UNSIGNED NOT NULL,
+  requirement TEXT NOT NULL,
+  PRIMARY KEY (job_id, position),
+  CONSTRAINT fk_job_requirements_job FOREIGN KEY (job_id) REFERENCES jobs (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS applications (
+  id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  user_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  job_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  status ENUM('pending', 'reviewing', 'interview', 'accepted', 'rejected') NOT NULL DEFAULT 'pending',
+  name VARCHAR(255) NULL,
+  email VARCHAR(254) NULL,
+  phone VARCHAR(50) NULL,
+  location VARCHAR(500) NULL,
+  experience TEXT NULL,
+  skills TEXT NULL,
+  cv_url TEXT NULL,
+  linkedin_url TEXT NOT NULL,
+  portfolio_url TEXT NOT NULL,
+  github_url TEXT NOT NULL,
+  expected_salary VARCHAR(255) NOT NULL,
+  availability VARCHAR(255) NOT NULL DEFAULT 'فوري',
+  notes TEXT NOT NULL,
+  interview_date VARCHAR(100) NOT NULL,
+  interview_time VARCHAR(100) NOT NULL,
+  interview_format ENUM('in_person', 'online') NOT NULL DEFAULT 'in_person',
+  interview_location TEXT NOT NULL,
+  interview_notes TEXT NOT NULL,
+  decision_message TEXT NOT NULL,
+  decision_processing BOOLEAN NOT NULL DEFAULT FALSE,
+  decision_processing_at DATETIME(3) NULL,
+  decision_notification_sent BOOLEAN NOT NULL DEFAULT FALSE,
+  decision_email_sent BOOLEAN NOT NULL DEFAULT FALSE,
+  applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_applications_user_job (user_id, job_id),
+  KEY idx_applications_user_created (user_id, created_at),
+  KEY idx_applications_job_status (job_id, status),
+  KEY idx_applications_job_created (job_id, created_at),
+  KEY idx_applications_job_status_created (job_id, status, created_at),
+  KEY idx_applications_status (status),
+  KEY idx_applications_created_id (created_at, id),
+  CONSTRAINT fk_applications_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT,
+  CONSTRAINT fk_applications_job FOREIGN KEY (job_id) REFERENCES jobs (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  user_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  title VARCHAR(500) NOT NULL DEFAULT '',
+  message VARCHAR(1000) NOT NULL,
+  type ENUM('accepted', 'interview', 'rejected', 'reviewing', 'pending', 'new_job', 'system', 'message') NOT NULL DEFAULT 'system',
+  is_read BOOLEAN NOT NULL DEFAULT FALSE,
+  job_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  application_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  interview_date VARCHAR(100) NOT NULL,
+  interview_time VARCHAR(100) NOT NULL,
+  interview_format ENUM('in_person', 'online') NOT NULL DEFAULT 'in_person',
+  interview_location TEXT NOT NULL,
+  interview_notes TEXT NOT NULL,
+  decision_message TEXT NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_notifications_user_created (user_id, created_at),
+  KEY idx_notifications_user_read (user_id, is_read),
+  CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT,
+  CONSTRAINT fk_notifications_job FOREIGN KEY (job_id) REFERENCES jobs (id) ON DELETE CASCADE,
+  CONSTRAINT fk_notifications_application FOREIGN KEY (application_id) REFERENCES applications (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS messages (
+  id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  application_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  job_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  sender_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  sender_role ENUM('employer', 'job_seeker', 'admin') NOT NULL,
+  content VARCHAR(2000) NOT NULL,
+  is_read BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_messages_application_created (application_id, created_at),
+  KEY idx_messages_sender_read (sender_id, is_read),
+  CONSTRAINT fk_messages_application FOREIGN KEY (application_id) REFERENCES applications (id) ON DELETE CASCADE,
+  CONSTRAINT fk_messages_job FOREIGN KEY (job_id) REFERENCES jobs (id) ON DELETE CASCADE,
+  CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users (id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS reports (
+  id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  user_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  type ENUM('complaint', 'suggestion') NOT NULL,
+  subject VARCHAR(120) NOT NULL,
+  message VARCHAR(2000) NOT NULL,
+  related_job_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NULL,
+  status ENUM('pending', 'reviewing', 'resolved', 'rejected', 'open') NOT NULL DEFAULT 'pending',
+  admin_reply VARCHAR(1000) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_reports_created (created_at),
+  KEY idx_reports_status_created (status, created_at),
+  KEY idx_reports_type_created (type, created_at),
+  KEY idx_reports_user_created (user_id, created_at),
+  CONSTRAINT fk_reports_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT,
+  CONSTRAINT fk_reports_related_job FOREIGN KEY (related_job_id) REFERENCES jobs (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS saved_jobs (
+  id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  user_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  job_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_saved_jobs_user_job (user_id, job_id),
+  KEY idx_saved_jobs_user_created (user_id, created_at),
+  CONSTRAINT fk_saved_jobs_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+  CONSTRAINT fk_saved_jobs_job FOREIGN KEY (job_id) REFERENCES jobs (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS admin_notification_states (
+  id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  admin_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  notification_key VARCHAR(255) NOT NULL,
+  is_read BOOLEAN NOT NULL DEFAULT FALSE,
+  is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_admin_notification_state_key (admin_id, notification_key),
+  KEY idx_admin_notification_deleted (admin_id, is_deleted),
+  CONSTRAINT fk_admin_notification_states_admin FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

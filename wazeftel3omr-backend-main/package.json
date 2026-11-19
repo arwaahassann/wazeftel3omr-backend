@@ -5,9 +5,14 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
+    "dev": "node --watch scripts/localMysqlServer.js",
+    "dev:mongo": "node --watch server.js",
     "ensure:admin-indexes": "node scripts/ensureAdminPerformanceIndexes.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "migrate:mysql": "node scripts/migrateMysql.js",
+    "start:mysql-staging": "node scripts/stagingMysqlServer.js",
+    "start:mysql-local": "node scripts/localMysqlServer.js",
+    "validate:mysql": "node scripts/validateMysqlSchema.js",
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",
@@ -28,6 +33,7 @@
     "mongodb": "^7.6.0",
     "mongoose": "^9.9.1",
     "morgan": "^1.11.0",
+    "mysql2": "^3.24.6",
     "nodemailer": "^9.0.5"
   }
 }
