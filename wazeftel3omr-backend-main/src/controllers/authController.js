@@ -17,6 +17,7 @@ const registerUser = async (req, res, next) => {
   try {
     const { name, email, password, role, phone, jobTitle, company, location, detailedAddress } = req.body;
     const accountRole = role || 'job_seeker';
+    const cleanEmail = String(email || '').toLowerCase().trim();
 
     if (accountRole === 'employer') {
       const normalizedPhone = normalizePhoneInput(phone);
@@ -38,7 +39,7 @@ const registerUser = async (req, res, next) => {
     }
 
     // 2. التحقق مما إذا كان الإيميل مستخدماً من قبل
-    const userExists = await User.findOne({ email: String(email).toLowerCase().trim() })
+    const userExists = await User.findOne({ email: cleanEmail })
       .select('role')
       .lean();
     if (userExists) {
