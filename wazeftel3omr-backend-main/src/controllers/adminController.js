@@ -9,6 +9,7 @@ const Message = require('../models/Message');
 const SavedJob = require('../models/SavedJob');
 const AdminNotificationState = require('../models/AdminNotificationState');
 const sendJobStatusEmail = require('../utils/sendJobStatusEmail');
+const resetAdminNotificationState = require('../utils/resetAdminNotificationState');
 const {
   countUniqueApplications,
   getUniqueApplicationIds,
@@ -27,7 +28,7 @@ const getDashboardStats = async (req, res, next) => {
     const activeJobIds = await Job.distinct('_id');
 
     const [totalSeekers, totalEmployers, newEmployersThisWeek,
-      totalJobs, activeJobs, reviewingJobs, closedJobs, rejectedJobs,
+      totalJobs, activeJobs, reviewingJobs, closedJobs, rejectedJobs, deletionPendingJobs, deletedJobs,
       totalApplications, newApplicationsThisWeek, applicationStatusStats,
       activeSeekers, suspendedSeekers, reviewingSeekers,
       activeEmployers, suspendedEmployers, reviewingEmployers,
@@ -45,6 +46,8 @@ const getDashboardStats = async (req, res, next) => {
       Job.countDocuments({ status: 'reviewing' }),
       Job.countDocuments({ status: 'closed' }),
       Job.countDocuments({ status: 'rejected' }),
+      Job.countDocuments({ status: 'deletion_pending' }),
+      Job.countDocuments({ status: 'deleted' }),
       // عدد الطلبات الحقيقية (بعد استبعاد الوظائف المحذوفة)
       countUniqueApplications({ job: { $in: activeJobIds } }),
       countUniqueApplications({ job: { $in: activeJobIds }, createdAt: { $gte: oneWeekAgo } }),
@@ -128,6 +131,8 @@ const getDashboardStats = async (req, res, next) => {
         reviewingJobs,
         closedJobs,
         rejectedJobs,
+        deletionPendingJobs,
+        deletedJobs,
         seekers: {
           active: activeSeekers,
           suspended: suspendedSeekers,
@@ -233,6 +238,11 @@ const updateCompanyStatus = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'حالة غير صالحة' });
     }
 
+    const previousCompany = await User.findOne({ _id: req.params.id, role: 'employer' })
+      .select('accountStatus')
+      .lean();
+    if (!previousCompany) return res.status(404).json({ success: false, message: 'الشركة غير موجودة' });
+
     if (status === 'active') {
       const companyRecord = await User.findOne({ _id: req.params.id, role: 'employer' })
         .select('phone location detailedAddress companyDocuments.commercialRegister.fileName companyDocuments.commercialRegister.mimeType companyDocuments.taxCard.fileName companyDocuments.taxCard.mimeType')
@@ -265,6 +275,9 @@ const updateCompanyStatus = async (req, res, next) => {
     );
 
     if (!company) return res.status(404).json({ success: false, message: 'الشركة غير موجودة' });
+    if (previousCompany.accountStatus !== company.accountStatus) {
+      await resetAdminNotificationState('company', company._id);
+    }
 
     res.status(200).json({ success: true, message: 'تم تحديث حالة الشركة بنجاح', company });
   } catch (error) {
@@ -483,11 +496,15 @@ const updateAdminJobStatus = async (req, res, next) => {
     }
 
     const wasDeletionPending = job.status === 'deletion_pending';
+    const previousStatus = job.status;
     job.status = status;
     if (wasDeletionPending) {
       job.deletionRequested = false;
     }
     await job.save();
+    if (previousStatus !== job.status) {
+      await resetAdminNotificationState('job', job._id);
+    }
 
     let notifTitle = '';
     let notifMsg = '';
@@ -655,11 +672,15 @@ const updateAdminReportStatus = async (req, res, next) => {
     const report = await Report.findById(req.params.id);
     if (!report) return res.status(404).json({ success: false, message: 'البلاغ غير موجود' });
 
+    const previousStatus = report.status;
     report.status = status;
     if (typeof adminReply === 'string') {
       report.adminReply = adminReply.trim();
     }
     await report.save();
+    if (previousStatus !== report.status) {
+      await resetAdminNotificationState('report', report._id);
+    }
 
     if (status === 'resolved' || status === 'rejected') {
       const kind = report.type === 'suggestion' ? 'مقترحك' : 'شكواك';

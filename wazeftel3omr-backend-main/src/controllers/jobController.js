@@ -4,8 +4,8 @@ const Message = require('../models/Message');
 const Notification = require('../models/Notification');
 const SavedJob = require('../models/SavedJob');
 const User = require('../models/User');
-const AdminNotificationState = require('../models/AdminNotificationState');
 const { normalizePhoneInput } = require('../utils/accountIdentity');
+const resetAdminNotificationState = require('../utils/resetAdminNotificationState');
 const sendJobStatusEmail = require('../utils/sendJobStatusEmail');
 const withCompanyProfileLogo = require('../utils/withCompanyProfileLogo');
 const { expireJobs } = require('../utils/expireJobs');
@@ -238,6 +238,7 @@ const updateJob = async (req, res, next) => {
       degree, workTime, closingDate, status,
     } = req.body;
 
+    const previousStatus = job.status;
     const updates = {
       title, company, location, jobType, category, description,
       requirements, salary, level, experience, qualifications, specialty,
@@ -255,6 +256,10 @@ const updateJob = async (req, res, next) => {
       new: true,
       runValidators: true,
     });
+
+    if (previousStatus !== job.status || req.user.role !== 'admin') {
+      await resetAdminNotificationState('job', job._id);
+    }
 
     if (req.user.role !== 'admin') {
       await Notification.create({
@@ -315,15 +320,7 @@ const deleteJob = async (req, res, next) => {
 
       const admins = await User.find({ role: 'admin' }).select('_id').lean();
       if (admins.length) {
-        await AdminNotificationState.bulkWrite(
-          admins.map(admin => ({
-            updateOne: {
-              filter: { admin: admin._id, notificationKey: `job:${job._id}` },
-              update: { $set: { isRead: false, isDeleted: false } },
-              upsert: true,
-            },
-          }))
-        );
+        await resetAdminNotificationState('job', job._id);
 
         await Notification.insertMany(
           admins.map(admin => ({
