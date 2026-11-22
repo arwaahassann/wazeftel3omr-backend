@@ -73,6 +73,10 @@ const jobSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    publishedAt: {
+      type: Date,
+      default: null,
+    },
     status: {
       type: String,
       enum: ['active', 'closed', 'reviewing', 'rejected', 'deletion_pending', 'deleted'],

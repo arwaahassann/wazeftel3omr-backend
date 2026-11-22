@@ -529,6 +529,9 @@ const updateAdminJobStatus = async (req, res, next) => {
       }
     } else {
       job.status = status;
+      if (status === 'active') {
+        job.publishedAt = new Date();
+      }
       await job.save();
     }
     if (previousStatus !== job.status) {

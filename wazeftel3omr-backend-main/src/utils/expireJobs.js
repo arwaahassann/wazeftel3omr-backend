@@ -12,12 +12,34 @@ const getCairoDate = (date = new Date()) => {
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
 
-const expireJobs = async (date = new Date()) => Job.updateMany(
-  {
-    status: 'active',
-    closingDate: { $type: 'string', $gt: '', $lt: getCairoDate(date) },
-  },
-  { $set: { status: 'closed' } }
-);
+const expireJobs = async (date = new Date()) => {
+  const thirtyDaysAgo = new Date(date.getTime() - 30 * 24 * 60 * 60 * 1000);
+  return Job.updateMany(
+    {
+      status: 'active',
+      $or: [
+        { closingDate: { $type: 'string', $gt: '', $lt: getCairoDate(date) } },
+        {
+          $and: [
+            {
+              $or: [
+                { closingDate: { $exists: false } },
+                { closingDate: null },
+                { closingDate: '' },
+              ],
+            },
+            {
+              $or: [
+                { publishedAt: { $lte: thirtyDaysAgo } },
+                { publishedAt: null, createdAt: { $lte: thirtyDaysAgo } },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    { $set: { status: 'closed' } }
+  );
+};
 
 module.exports = { expireJobs, getCairoDate };

@@ -182,6 +182,7 @@ const createJob = async (req, res, next) => {
       closingDate,
       postedBy: req.user._id,
       status: req.user.role === 'admin' ? 'active' : 'reviewing',
+      publishedAt: req.user.role === 'admin' ? new Date() : null,
     });
 
     // 🔔 إشعار لصاحب العمل بتأكيد استلام طلب الوظيفة
@@ -258,6 +259,7 @@ const updateJob = async (req, res, next) => {
     // 🔒 إذا كان المعدل ليس أدمن: التعديل يتطلب موافقة الإدارة وتعود الوظيفة قيد المراجعة
     if (req.user.role !== 'admin') {
       updates.status = 'reviewing';
+      updates.publishedAt = null;
     }
     if (previousStatus === 'deletion_pending') {
       updates.deletionRequested = false;
