@@ -21,9 +21,9 @@ router.get('/', getAllJobs);
 router.get('/mine', protect, authorize('employer', 'admin'), getMyJobs);
 router.get('/:id', optionalProtect, getJobById);
 
-// 2. المسارات المحمية (تتطلب دخول صاحب عمل أو أدمين) + Validation
-router.post('/',    protect, authorize('employer', 'admin'), validateCreateJob, createJob);
-router.put('/:id',  protect, authorize('employer', 'admin'), validateUpdateJob,  updateJob);
-router.delete('/:id', protect, authorize('employer', 'admin'), deleteJob);
+// 2. المسارات المحمية لإدارة وظائف صاحب العمل + Validation
+router.post('/',    protect, authorize('employer'), validateCreateJob, createJob);
+router.put('/:id',  protect, authorize('employer'), validateUpdateJob,  updateJob);
+router.delete('/:id', protect, authorize('employer'), deleteJob);
 
 module.exports = router;

@@ -144,7 +144,7 @@ const getJobById = async (req, res, next) => {
 
 // @desc    إنشاء وظيفة جديدة
 // @route   POST /api/jobs
-// @access  Private (Employer / Admin)
+// @access  Private (Employer)
 const createJob = async (req, res, next) => {
   try {
     if (req.user.role === 'employer' && !(await requireEmployerPhone(req.user._id, res))) {
@@ -219,7 +219,7 @@ const createJob = async (req, res, next) => {
 
 // @desc    تعديل وظيفة
 // @route   PUT /api/jobs/:id
-// @access  Private (Employer / Admin)
+// @access  Private (Employer)
 const updateJob = async (req, res, next) => {
   try {
     let job = await Job.findById(req.params.id);
@@ -299,7 +299,7 @@ const updateJob = async (req, res, next) => {
 
 // @desc    حذف وظيفة (يتطلب موافقة الأدمن لغير المشرف)
 // @route   DELETE /api/jobs/:id
-// @access  Private (Employer / Admin)
+// @access  Private (Employer)
 const deleteJob = async (req, res, next) => {
   try {
     const job = await Job.findById(req.params.id);

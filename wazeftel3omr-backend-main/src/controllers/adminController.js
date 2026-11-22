@@ -468,7 +468,7 @@ const getAdminJobDetails = async (req, res, next) => {
   }
 };
 
-// @desc    تحديث حالة وظيفة (قبول / رفض / قيد مراجعة / إغلاق)
+// @desc    اعتماد أو رفض وظيفة قيد المراجعة أو رفض طلب حذف
 // @route   PUT /api/admin/jobs/:id/status
 // @access  Private (Admin)
 const updateAdminJobStatus = async (req, res, next) => {
@@ -478,9 +478,12 @@ const updateAdminJobStatus = async (req, res, next) => {
     const rejectionReason = typeof req.body.rejectionReason === 'string'
       ? req.body.rejectionReason.trim()
       : '';
-    const validStatuses = ['active', 'closed', 'reviewing', 'rejected'];
+    const validStatuses = ['active', 'rejected'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'حالة غير صالحة' });
+    }
+    if (rejectDeletion && status !== 'active') {
+      return res.status(400).json({ success: false, message: 'حالة غير صالحة لرفض طلب الحذف' });
     }
     if (rejectionReason.length > 500) {
       return res.status(400).json({ success: false, message: 'سبب الرفض لا يمكن أن يتجاوز 500 حرف' });
@@ -489,7 +492,7 @@ const updateAdminJobStatus = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'يمكن إرسال سبب الرفض عند رفض الإعلان فقط' });
     }
 
-    const job = await Job.findById(req.params.id);
+    let job = await Job.findById(req.params.id);
 
     if (!job) return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة' });
     if (job.status === 'deleted') {
@@ -500,6 +503,9 @@ const updateAdminJobStatus = async (req, res, next) => {
     }
     if (rejectDeletion && job.status !== 'deletion_pending') {
       return res.status(409).json({ success: false, message: 'لا يوجد طلب حذف قيد المراجعة لهذه الوظيفة' });
+    }
+    if (!rejectDeletion && job.status !== 'reviewing') {
+      return res.status(409).json({ success: false, message: 'لا يمكن اعتماد أو رفض وظيفة ليست قيد المراجعة' });
     }
 
     const previousStatus = job.status;
@@ -731,7 +737,7 @@ const updateAdminReportStatus = async (req, res, next) => {
   }
 };
 
-// @desc    حذف وظيفة نهائياً من قِبل المشرف (أو اعتماد طلب الحذف)
+// @desc    اعتماد طلب حذف وظيفة
 // @route   DELETE /api/admin/jobs/:id
 // @access  Private (Admin)
 const deleteAdminJob = async (req, res, next) => {
@@ -742,17 +748,17 @@ const deleteAdminJob = async (req, res, next) => {
       return res.status(409).json({ success: false, message: 'تم اعتماد حذف هذه الوظيفة مسبقاً' });
     }
 
+    if (job.status !== 'deletion_pending') {
+      return res.status(409).json({ success: false, message: 'يمكن حذف الوظيفة فقط بعد تقديم الشركة طلب حذف ومراجعته' });
+    }
     const jobId = job._id;
-    const wasDeletionRequest = job.status === 'deletion_pending';
-    if (wasDeletionRequest) {
-      job = await Job.findOneAndUpdate(
-        { _id: jobId, status: 'deletion_pending' },
-        { $set: { status: 'deleted', deletionRequested: false, deletedAt: new Date() } },
-        { new: true }
-      );
-      if (!job) {
-        return res.status(409).json({ success: false, message: 'تمت معالجة طلب حذف هذه الوظيفة بالفعل' });
-      }
+    job = await Job.findOneAndUpdate(
+      { _id: jobId, status: 'deletion_pending' },
+      { $set: { status: 'deleted', deletionRequested: false, deletedAt: new Date() } },
+      { new: true }
+    );
+    if (!job) {
+      return res.status(409).json({ success: false, message: 'تمت معالجة طلب حذف هذه الوظيفة بالفعل' });
     }
 
     try {
@@ -765,17 +771,11 @@ const deleteAdminJob = async (req, res, next) => {
       await Notification.deleteMany({ job: jobId });
       await Application.deleteMany({ job: jobId });
       await SavedJob.deleteMany({ job: jobId });
-
-      if (!wasDeletionRequest) {
-        await job.deleteOne();
-      }
     } catch (error) {
-      if (wasDeletionRequest) {
-        await Job.updateOne(
-          { _id: jobId, status: 'deleted' },
-          { $set: { status: 'deletion_pending', deletionRequested: true }, $unset: { deletedAt: 1 } }
-        );
-      }
+      await Job.updateOne(
+        { _id: jobId, status: 'deleted' },
+        { $set: { status: 'deletion_pending', deletionRequested: true }, $unset: { deletedAt: 1 } }
+      );
       throw error;
     }
 
