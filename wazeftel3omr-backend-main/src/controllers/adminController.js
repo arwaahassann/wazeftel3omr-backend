@@ -357,7 +357,7 @@ const getAdminSeekers = async (req, res, next) => {
 const updateAdminSeekerStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
-    if (!['active', 'reviewing', 'suspended'].includes(status)) {
+    if (!['active', 'suspended'].includes(status)) {
       return res.status(400).json({ success: false, message: 'حالة الباحث عن عمل غير صالحة' });
     }
 
