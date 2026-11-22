@@ -129,7 +129,7 @@ const getJobById = async (req, res, next) => {
     const ownerId = job.postedBy?._id || job.postedBy;
     const isOwner = req.user && ownerId?.toString() === req.user._id.toString();
     const isAdmin = req.user?.role === 'admin';
-    if (job.status !== 'active' && !isOwner && !isAdmin) {
+    if (!['active', 'closed'].includes(job.status) && !isOwner && !isAdmin) {
       return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة' });
     }
 
