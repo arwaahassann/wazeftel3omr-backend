@@ -55,6 +55,13 @@ const protect = async (req, res, next) => {
   }
 };
 
+const optionalProtect = (req, res, next) => {
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    return protect(req, res, next);
+  }
+  return next();
+};
+
 // 🔒 2. التحقق من الصلاحيات والـ Roles (مثل admin أو employer)
 const authorize = (...roles) => {
   return (req, res, next) => {
@@ -70,5 +77,6 @@ const authorize = (...roles) => {
 
 module.exports = {
   protect,
+  optionalProtect,
   authorize,
 };

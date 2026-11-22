@@ -122,6 +122,16 @@ const getJobById = async (req, res, next) => {
     if (!job) {
       return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة' });
     }
+    if (job.status === 'deleted') {
+      return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة أو تم حذفها' });
+    }
+
+    const ownerId = job.postedBy?._id || job.postedBy;
+    const isOwner = req.user && ownerId?.toString() === req.user._id.toString();
+    const isAdmin = req.user?.role === 'admin';
+    if (job.status !== 'active' && !isOwner && !isAdmin) {
+      return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة' });
+    }
 
     res.status(200).json({
       success: true,
@@ -249,6 +259,10 @@ const updateJob = async (req, res, next) => {
     if (req.user.role !== 'admin') {
       updates.status = 'reviewing';
     }
+    if (previousStatus === 'deletion_pending') {
+      updates.deletionRequested = false;
+      updates.statusBeforeDeletion = null;
+    }
 
     Object.keys(updates).forEach((key) => updates[key] === undefined && delete updates[key]);
 
@@ -306,6 +320,9 @@ const deleteJob = async (req, res, next) => {
 
     // 🛡️ إذا كان الطالب صاحب العمل (وليس أدمن): إرسال طلب حذف للمراجعة ولا يُحذف مباشرة
     if (req.user.role !== 'admin') {
+      if (job.status !== 'deletion_pending') {
+        job.statusBeforeDeletion = job.status;
+      }
       job.status = 'deletion_pending';
       job.deletionRequested = true;
       await job.save();

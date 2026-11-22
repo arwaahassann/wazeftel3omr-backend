@@ -252,7 +252,7 @@ const toggleSaveJob = async (req, res, next) => {
     const userId = req.user._id;
 
     const Job = require('../models/Job');
-    const jobExists = await Job.findById(jobId);
+    const jobExists = await Job.findOne({ _id: jobId, status: { $ne: 'deleted' } });
     if (!jobExists) {
       return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة أو تم حذفها' });
     }

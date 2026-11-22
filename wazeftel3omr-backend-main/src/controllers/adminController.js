@@ -474,6 +474,7 @@ const getAdminJobDetails = async (req, res, next) => {
 const updateAdminJobStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
+    const rejectDeletion = req.body.rejectDeletion === true;
     const rejectionReason = typeof req.body.rejectionReason === 'string'
       ? req.body.rejectionReason.trim()
       : '';
@@ -494,28 +495,54 @@ const updateAdminJobStatus = async (req, res, next) => {
     if (job.status === 'deleted') {
       return res.status(409).json({ success: false, message: 'لا يمكن تعديل وظيفة تم اعتماد حذفها' });
     }
-
-    const wasDeletionPending = job.status === 'deletion_pending';
-    const previousStatus = job.status;
-    job.status = status;
-    if (wasDeletionPending) {
-      job.deletionRequested = false;
+    if (job.status === 'deletion_pending' && !rejectDeletion) {
+      return res.status(409).json({ success: false, message: 'يجب تحديد رفض طلب الحذف لمعالجة هذه الوظيفة' });
     }
-    await job.save();
+    if (rejectDeletion && job.status !== 'deletion_pending') {
+      return res.status(409).json({ success: false, message: 'لا يوجد طلب حذف قيد المراجعة لهذه الوظيفة' });
+    }
+
+    const previousStatus = job.status;
+    const restoredStatus = ['active', 'closed', 'reviewing', 'rejected'].includes(job.statusBeforeDeletion)
+      ? job.statusBeforeDeletion
+      : 'reviewing';
+    if (rejectDeletion) {
+      job = await Job.findOneAndUpdate(
+        { _id: job._id, status: 'deletion_pending' },
+        {
+          $set: {
+            status: restoredStatus,
+            deletionRequested: false,
+            statusBeforeDeletion: null,
+          },
+        },
+        { new: true, runValidators: true }
+      );
+      if (!job) {
+        return res.status(409).json({ success: false, message: 'تمت معالجة طلب حذف هذه الوظيفة بالفعل' });
+      }
+    } else {
+      job.status = status;
+      await job.save();
+    }
     if (previousStatus !== job.status) {
       await resetAdminNotificationState('job', job._id);
     }
 
     let notifTitle = '';
     let notifMsg = '';
-    if (status === 'active') {
-      if (wasDeletionPending) {
-        notifTitle = 'تم رفض طلب حذف الوظيفة';
-        notifMsg = `تمت مراجعة طلب حذف وظيفة "${job.title}" ورفض الطلب. ستظل الوظيفة منشورة على المنصة.`;
-      } else {
-        notifTitle = 'تهانينا! تمت الموافقة على نشر وظيفتك ✅';
-        notifMsg = `تمت مراجعة وظيفتك "${job.title}" واعتمادها من قبل إدارة المنصة وأصبحت متاحة للتقديم الآن.`;
-      }
+    if (rejectDeletion) {
+      const restoredStatusLabels = {
+        active: 'نشطة',
+        closed: 'مغلقة',
+        reviewing: 'قيد المراجعة',
+        rejected: 'مرفوضة',
+      };
+      notifTitle = 'تم رفض طلب حذف الوظيفة';
+      notifMsg = `تم رفض طلب حذف وظيفة "${job.title}"، وعادت إلى حالة "${restoredStatusLabels[job.status]}".`;
+    } else if (status === 'active') {
+      notifTitle = 'تهانينا! تمت الموافقة على نشر وظيفتك ✅';
+      notifMsg = `تمت مراجعة وظيفتك "${job.title}" واعتمادها من قبل إدارة المنصة وأصبحت متاحة للتقديم الآن.`;
     } else if (status === 'rejected') {
       notifTitle = 'تحديث بخصوص إعلان الوظيفة ❌';
       notifMsg = `نعتذر، تم رفض إعلان الوظيفة "${job.title}". سبب الرفض: ${rejectionReason || 'لم يتم توضيح سبب الرفض.'}`;
@@ -532,16 +559,18 @@ const updateAdminJobStatus = async (req, res, next) => {
         console.error('Failed to create the job status notification:', error.message);
       });
 
-      try {
-        const employer = await User.findById(job.postedBy).select('email').lean();
-        await sendJobStatusEmail({
-          email: employer?.email,
-          title: job.title,
-          status,
-          rejectionReason,
-        });
-      } catch (error) {
-        console.error(`Failed to send job ${status} email:`, error.message);
+      if (!rejectDeletion) {
+        try {
+          const employer = await User.findById(job.postedBy).select('email').lean();
+          await sendJobStatusEmail({
+            email: employer?.email,
+            title: job.title,
+            status,
+            rejectionReason,
+          });
+        } catch (error) {
+          console.error(`Failed to send job ${status} email:`, error.message);
+        }
       }
     }
 

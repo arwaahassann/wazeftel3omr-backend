@@ -78,6 +78,11 @@ const jobSchema = new mongoose.Schema(
       enum: ['active', 'closed', 'reviewing', 'rejected', 'deletion_pending', 'deleted'],
       default: 'reviewing',
     },
+    statusBeforeDeletion: {
+      type: String,
+      enum: ['active', 'closed', 'reviewing', 'rejected', null],
+      default: null,
+    },
     deletionRequested: {
       type: Boolean,
       default: false,

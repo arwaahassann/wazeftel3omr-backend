@@ -9,7 +9,7 @@ const {
   getMyJobs,
   expireJobsFromCron,
 } = require('../controllers/jobController');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, optionalProtect, authorize } = require('../middleware/authMiddleware');
 const {
   validateCreateJob,
   validateUpdateJob,
@@ -19,7 +19,7 @@ const {
 router.get('/expire', expireJobsFromCron);
 router.get('/', getAllJobs);
 router.get('/mine', protect, authorize('employer', 'admin'), getMyJobs);
-router.get('/:id', getJobById);
+router.get('/:id', optionalProtect, getJobById);
 
 // 2. المسارات المحمية (تتطلب دخول صاحب عمل أو أدمين) + Validation
 router.post('/',    protect, authorize('employer', 'admin'), validateCreateJob, createJob);
