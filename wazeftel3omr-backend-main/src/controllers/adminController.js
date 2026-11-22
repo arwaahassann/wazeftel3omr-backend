@@ -541,7 +541,10 @@ const getAdminAllApplications = async (req, res, next) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
     const skip = (pageNum - 1) * limitNum;
 
-    const filter = {};
+    const activeJobIds = await Job.distinct('_id');
+    const filter = {
+      job: { $in: activeJobIds },
+    };
     if (status && status !== 'all') {
       filter.status = status;
     }

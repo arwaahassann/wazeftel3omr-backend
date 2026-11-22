@@ -7,6 +7,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "ensure:admin-indexes": "node scripts/ensureAdminPerformanceIndexes.js",
+    "list:orphaned-applications": "node scripts/listOrphanedApplications.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
