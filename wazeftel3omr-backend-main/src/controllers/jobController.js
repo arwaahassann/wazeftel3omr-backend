@@ -4,6 +4,7 @@ const Message = require('../models/Message');
 const Notification = require('../models/Notification');
 const SavedJob = require('../models/SavedJob');
 const User = require('../models/User');
+const AdminNotificationState = require('../models/AdminNotificationState');
 const { normalizePhoneInput } = require('../utils/accountIdentity');
 const sendJobStatusEmail = require('../utils/sendJobStatusEmail');
 const withCompanyProfileLogo = require('../utils/withCompanyProfileLogo');
@@ -216,6 +217,9 @@ const updateJob = async (req, res, next) => {
     if (!job) {
       return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة' });
     }
+    if (job.status === 'deleted') {
+      return res.status(409).json({ success: false, message: 'تم اعتماد حذف هذه الوظيفة مسبقاً' });
+    }
 
     if (job.postedBy.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       return res.status(403).json({
@@ -284,6 +288,9 @@ const deleteJob = async (req, res, next) => {
     if (!job) {
       return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة' });
     }
+    if (job.status === 'deleted') {
+      return res.status(409).json({ success: false, message: 'تم اعتماد حذف هذه الوظيفة مسبقاً' });
+    }
 
     if (job.postedBy.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       return res.status(403).json({
@@ -308,6 +315,16 @@ const deleteJob = async (req, res, next) => {
 
       const admins = await User.find({ role: 'admin' }).select('_id').lean();
       if (admins.length) {
+        await AdminNotificationState.bulkWrite(
+          admins.map(admin => ({
+            updateOne: {
+              filter: { admin: admin._id, notificationKey: `job:${job._id}` },
+              update: { $set: { isRead: false, isDeleted: false } },
+              upsert: true,
+            },
+          }))
+        );
+
         await Notification.insertMany(
           admins.map(admin => ({
             user: admin._id,

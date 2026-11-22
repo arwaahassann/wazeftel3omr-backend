@@ -478,6 +478,9 @@ const updateAdminJobStatus = async (req, res, next) => {
     const job = await Job.findById(req.params.id);
 
     if (!job) return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة' });
+    if (job.status === 'deleted') {
+      return res.status(409).json({ success: false, message: 'لا يمكن تعديل وظيفة تم اعتماد حذفها' });
+    }
 
     const wasDeletionPending = job.status === 'deletion_pending';
     job.status = status;
@@ -683,28 +686,47 @@ const updateAdminReportStatus = async (req, res, next) => {
 // @access  Private (Admin)
 const deleteAdminJob = async (req, res, next) => {
   try {
-    const job = await Job.findById(req.params.id);
+    let job = await Job.findById(req.params.id);
     if (!job) return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة' });
+    if (job.status === 'deleted') {
+      return res.status(409).json({ success: false, message: 'تم اعتماد حذف هذه الوظيفة مسبقاً' });
+    }
 
     const jobId = job._id;
     const wasDeletionRequest = job.status === 'deletion_pending';
-    const relatedApplications = await Application.find({ job: jobId }).select('_id');
-    const applicationIds = relatedApplications.map((a) => a._id);
-
-    if (applicationIds.length > 0) {
-      await Message.deleteMany({ application: { $in: applicationIds } });
-    }
-    await Notification.deleteMany({ job: jobId });
-    await Application.deleteMany({ job: jobId });
-    await SavedJob.deleteMany({ job: jobId });
-
     if (wasDeletionRequest) {
-      job.status = 'deleted';
-      job.deletionRequested = false;
-      job.deletedAt = new Date();
-      await job.save();
-    } else {
-      await job.deleteOne();
+      job = await Job.findOneAndUpdate(
+        { _id: jobId, status: 'deletion_pending' },
+        { $set: { status: 'deleted', deletionRequested: false, deletedAt: new Date() } },
+        { new: true }
+      );
+      if (!job) {
+        return res.status(409).json({ success: false, message: 'تمت معالجة طلب حذف هذه الوظيفة بالفعل' });
+      }
+    }
+
+    try {
+      const relatedApplications = await Application.find({ job: jobId }).select('_id');
+      const applicationIds = relatedApplications.map((a) => a._id);
+
+      if (applicationIds.length > 0) {
+        await Message.deleteMany({ application: { $in: applicationIds } });
+      }
+      await Notification.deleteMany({ job: jobId });
+      await Application.deleteMany({ job: jobId });
+      await SavedJob.deleteMany({ job: jobId });
+
+      if (!wasDeletionRequest) {
+        await job.deleteOne();
+      }
+    } catch (error) {
+      if (wasDeletionRequest) {
+        await Job.updateOne(
+          { _id: jobId, status: 'deleted' },
+          { $set: { status: 'deletion_pending', deletionRequested: true }, $unset: { deletedAt: 1 } }
+        );
+      }
+      throw error;
     }
 
     // إشعار لصاحب العمل
