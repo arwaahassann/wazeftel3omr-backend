@@ -475,19 +475,27 @@ const updateAdminJobStatus = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'يمكن إرسال سبب الرفض عند رفض الإعلان فقط' });
     }
 
-    const job = await Job.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
+    const job = await Job.findById(req.params.id);
 
     if (!job) return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة' });
+
+    const wasDeletionPending = job.status === 'deletion_pending';
+    job.status = status;
+    if (wasDeletionPending) {
+      job.deletionRequested = false;
+    }
+    await job.save();
 
     let notifTitle = '';
     let notifMsg = '';
     if (status === 'active') {
-      notifTitle = 'تهانينا! تمت الموافقة على نشر وظيفتك ✅';
-      notifMsg = `تمت مراجعة وظيفتك "${job.title}" واعتمادها من قبل إدارة المنصة وأصبحت متاحة للتقديم الآن.`;
+      if (wasDeletionPending) {
+        notifTitle = 'تم رفض طلب حذف الوظيفة';
+        notifMsg = `تمت مراجعة طلب حذف وظيفة "${job.title}" ورفض الطلب. ستظل الوظيفة منشورة على المنصة.`;
+      } else {
+        notifTitle = 'تهانينا! تمت الموافقة على نشر وظيفتك ✅';
+        notifMsg = `تمت مراجعة وظيفتك "${job.title}" واعتمادها من قبل إدارة المنصة وأصبحت متاحة للتقديم الآن.`;
+      }
     } else if (status === 'rejected') {
       notifTitle = 'تحديث بخصوص إعلان الوظيفة ❌';
       notifMsg = `نعتذر، تم رفض إعلان الوظيفة "${job.title}". سبب الرفض: ${rejectionReason || 'لم يتم توضيح سبب الرفض.'}`;
@@ -676,6 +684,7 @@ const deleteAdminJob = async (req, res, next) => {
     if (!job) return res.status(404).json({ success: false, message: 'الوظيفة غير موجودة' });
 
     const jobId = job._id;
+    const wasDeletionRequest = job.status === 'deletion_pending';
     const relatedApplications = await Application.find({ job: jobId }).select('_id');
     const applicationIds = relatedApplications.map((a) => a._id);
 
@@ -685,7 +694,15 @@ const deleteAdminJob = async (req, res, next) => {
     await Notification.deleteMany({ job: jobId });
     await Application.deleteMany({ job: jobId });
     await SavedJob.deleteMany({ job: jobId });
-    await job.deleteOne();
+
+    if (wasDeletionRequest) {
+      job.status = 'deleted';
+      job.deletionRequested = false;
+      job.deletedAt = new Date();
+      await job.save();
+    } else {
+      await job.deleteOne();
+    }
 
     // إشعار لصاحب العمل
     await Notification.create({
@@ -947,11 +964,70 @@ const updateAdminNotificationStates = async (req, res, next) => {
   }
 };
 
+// @desc    تعديل بيانات الشركة (العنوان / اسم الشركة) بواسطة الأدمن
+// @route   PUT /api/admin/companies/:id/info
+// @access  Private (Admin)
+const updateCompanyInfo = async (req, res, next) => {
+  try {
+    const { location, detailedAddress, company } = req.body;
+
+    // على الأقل حقل واحد مطلوب
+    if (location === undefined && detailedAddress === undefined && company === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'يجب إرسال حقل واحد على الأقل للتعديل (location أو detailedAddress أو company)',
+      });
+    }
+
+    const updateFields = {};
+    if (location !== undefined) {
+      if (typeof location !== 'string' || location.trim().length === 0) {
+        return res.status(400).json({ success: false, message: 'الموقع لا يمكن أن يكون فارغاً' });
+      }
+      updateFields.location = location.trim();
+    }
+    if (detailedAddress !== undefined) {
+      if (typeof detailedAddress !== 'string' || detailedAddress.trim().length === 0) {
+        return res.status(400).json({ success: false, message: 'العنوان التفصيلي لا يمكن أن يكون فارغاً' });
+      }
+      if (detailedAddress.trim().length > 300) {
+        return res.status(400).json({ success: false, message: 'العنوان التفصيلي لا يمكن أن يتجاوز 300 حرف' });
+      }
+      updateFields.detailedAddress = detailedAddress.trim();
+    }
+    if (company !== undefined) {
+      if (typeof company !== 'string' || company.trim().length < 2) {
+        return res.status(400).json({ success: false, message: 'اسم الشركة يجب أن يكون حرفين على الأقل' });
+      }
+      updateFields.company = company.trim();
+    }
+
+    const updatedCompany = await User.findOneAndUpdate(
+      { _id: req.params.id, role: 'employer' },
+      { $set: updateFields },
+      { new: true, select: 'name email company companyWebsite companyIndustry location detailedAddress phone accountStatus createdAt avatar companyDocuments.commercialRegister.fileName companyDocuments.commercialRegister.mimeType companyDocuments.commercialRegister.uploadedAt companyDocuments.taxCard.fileName companyDocuments.taxCard.mimeType companyDocuments.taxCard.uploadedAt' }
+    );
+
+    if (!updatedCompany) {
+      return res.status(404).json({ success: false, message: 'الشركة غير موجودة' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'تم تحديث بيانات الشركة بنجاح',
+      company: updatedCompany,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getDashboardStats,
   searchAdminAccounts,
   getAllCompanies,
   updateCompanyStatus,
+  updateCompanyInfo,
   getAdminCompanyDocument,
   getAdminSeekers,
   updateAdminSeekerStatus,

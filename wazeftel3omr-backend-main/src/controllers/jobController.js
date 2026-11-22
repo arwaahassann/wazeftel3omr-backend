@@ -306,6 +306,19 @@ const deleteJob = async (req, res, next) => {
         job: job._id,
       }).catch((error) => console.error('Failed to notify the job poster about the deletion request:', error.message));
 
+      const admins = await User.find({ role: 'admin' }).select('_id').lean();
+      if (admins.length) {
+        await Notification.insertMany(
+          admins.map(admin => ({
+            user: admin._id,
+            title: 'طلب حذف وظيفة جديد',
+            message: `الشركة طلبت حذف الوظيفة "${job.title}" وهي الآن قيد مراجعة طلب الحذف.`,
+            type: 'pending',
+            job: job._id,
+          }))
+        ).catch((error) => console.error('Failed to notify admins about the deletion request:', error.message));
+      }
+
       return res.status(200).json({
         success: true,
         message: 'تم إرسال طلب حذف الوظيفة لإدارة المنصة بنجاح، ولن يتم الحذف إلا بعد مراجعة وموافقة المشرف.',
