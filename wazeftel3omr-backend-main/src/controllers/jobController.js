@@ -1,8 +1,6 @@
 const Job = require('../models/Job');
 const Application = require('../models/Application');
-const Message = require('../models/Message');
 const Notification = require('../models/Notification');
-const SavedJob = require('../models/SavedJob');
 const User = require('../models/User');
 const { normalizePhoneInput } = require('../utils/accountIdentity');
 const resetAdminNotificationState = require('../utils/resetAdminNotificationState');
@@ -147,11 +145,11 @@ const getJobById = async (req, res, next) => {
 // @access  Private (Employer)
 const createJob = async (req, res, next) => {
   try {
-    if (req.user.role === 'employer' && !(await requireEmployerPhone(req.user._id, res))) {
+    if (!(await requireEmployerPhone(req.user._id, res))) {
       return;
     }
 
-    if (req.user.role === 'employer' && req.user.accountStatus !== 'active') {
+    if (req.user.accountStatus !== 'active') {
       return res.status(403).json({
         success: false,
         message: 'حساب شركتك قيد المراجعة حالياً. يمكنك نشر الوظائف بعد موافقة إدارة المنصة على الشركة.',
@@ -181,36 +179,32 @@ const createJob = async (req, res, next) => {
       workTime,
       closingDate,
       postedBy: req.user._id,
-      status: req.user.role === 'admin' ? 'active' : 'reviewing',
-      publishedAt: req.user.role === 'admin' ? new Date() : null,
+      status: 'reviewing',
+      publishedAt: null,
     });
 
     // 🔔 إشعار لصاحب العمل بتأكيد استلام طلب الوظيفة
     await Notification.create({
       user: req.user._id,
-      title: req.user.role === 'admin' ? 'تم نشر وظيفتك بنجاح ✅' : 'تم استلام طلب نشر الوظيفة ⏳',
-      message: req.user.role === 'admin'
-        ? `تم نشر وظيفتك "${job.title}" وأصبحت متاحة للتقديم الآن.`
-        : `تم استلام إعلان وظيفة "${job.title}". الوظيفة قيد المراجعة حالياً من قِبل إدارة المنصة وسيتم إشعارك فور اعتمادها.`,
-      type: req.user.role === 'admin' ? 'system' : 'pending',
+      title: 'تم استلام طلب نشر الوظيفة ⏳',
+      message: `تم استلام إعلان وظيفة "${job.title}". الوظيفة قيد المراجعة حالياً من قِبل إدارة المنصة وسيتم إشعارك فور اعتمادها.`,
+      type: 'pending',
       job: job._id,
     }).catch((error) => console.error('Failed to notify the job poster:', error.message));
 
-    if (req.user.role === 'employer') {
-      try {
-        await sendJobStatusEmail({
-          email: req.user.email,
-          title: job.title,
-          status: 'reviewing',
-        });
-      } catch (error) {
-        console.error('Failed to send the job submission email:', error.message);
-      }
+    try {
+      await sendJobStatusEmail({
+        email: req.user.email,
+        title: job.title,
+        status: 'reviewing',
+      });
+    } catch (error) {
+      console.error('Failed to send the job submission email:', error.message);
     }
 
     res.status(201).json({
       success: true,
-      message: req.user.role === 'admin' ? 'تم إضافة الوظيفة بنجاح' : 'تم إرسال الوظيفة للمراجعة، سيتم تفعيلها بعد موافقة الإدارة',
+      message: 'تم إرسال الوظيفة للمراجعة، سيتم تفعيلها بعد موافقة الإدارة',
       job,
     });
   } catch (error) {
@@ -232,35 +226,32 @@ const updateJob = async (req, res, next) => {
       return res.status(409).json({ success: false, message: 'تم اعتماد حذف هذه الوظيفة مسبقاً' });
     }
 
-    if (job.postedBy.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    if (job.postedBy.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: 'غير مصرح لك بتعديل هذه الوظيفة',
       });
     }
 
-    if (req.user.role === 'employer' && !(await requireEmployerPhone(req.user._id, res))) {
+    if (!(await requireEmployerPhone(req.user._id, res))) {
       return;
     }
 
     const {
       title, company, location, jobType, category, description,
       requirements, salary, level, experience, qualifications, specialty,
-      degree, workTime, closingDate, status,
+      degree, workTime, closingDate,
     } = req.body;
 
     const previousStatus = job.status;
     const updates = {
       title, company, location, jobType, category, description,
       requirements, salary, level, experience, qualifications, specialty,
-      degree, workTime, closingDate, status,
+      degree, workTime, closingDate,
+      status: 'reviewing',
+      publishedAt: null,
     };
 
-    // 🔒 إذا كان المعدل ليس أدمن: التعديل يتطلب موافقة الإدارة وتعود الوظيفة قيد المراجعة
-    if (req.user.role !== 'admin') {
-      updates.status = 'reviewing';
-      updates.publishedAt = null;
-    }
     if (previousStatus === 'deletion_pending') {
       updates.deletionRequested = false;
       updates.statusBeforeDeletion = null;
@@ -273,25 +264,19 @@ const updateJob = async (req, res, next) => {
       runValidators: true,
     });
 
-    if (previousStatus !== job.status || req.user.role !== 'admin') {
-      await resetAdminNotificationState('job', job._id);
-    }
+    await resetAdminNotificationState('job', job._id);
 
-    if (req.user.role !== 'admin') {
-      await Notification.create({
-        user: req.user._id,
-        title: 'تم استلام تعديلات الوظيفة ⏳',
-        message: `تم إرسال تعديلاتك على وظيفة "${job.title}" للمراجعة، وسيتم إعادة تفعيلها فور موافقة إدارة المنصة.`,
-        type: 'pending',
-        job: job._id,
-      }).catch((error) => console.error('Failed to notify the job poster about the update:', error.message));
-    }
+    await Notification.create({
+      user: req.user._id,
+      title: 'تم استلام تعديلات الوظيفة ⏳',
+      message: `تم إرسال تعديلاتك على وظيفة "${job.title}" للمراجعة، وسيتم إعادة تفعيلها فور موافقة إدارة المنصة.`,
+      type: 'pending',
+      job: job._id,
+    }).catch((error) => console.error('Failed to notify the job poster about the update:', error.message));
 
     res.status(200).json({
       success: true,
-      message: req.user.role === 'admin'
-        ? 'تم تحديث الوظيفة بنجاح'
-        : 'تم إرسال تعديلات الوظيفة للمراجعة بنجاح، وسيتم تفعيلها بعد موافقة الإدارة',
+      message: 'تم إرسال تعديلات الوظيفة للمراجعة بنجاح، وسيتم تفعيلها بعد موافقة الإدارة',
       job,
     });
   } catch (error) {
@@ -299,7 +284,7 @@ const updateJob = async (req, res, next) => {
   }
 };
 
-// @desc    حذف وظيفة (يتطلب موافقة الأدمن لغير المشرف)
+// @desc    طلب حذف وظيفة من إدارة المنصة
 // @route   DELETE /api/jobs/:id
 // @access  Private (Employer)
 const deleteJob = async (req, res, next) => {
@@ -313,79 +298,47 @@ const deleteJob = async (req, res, next) => {
       return res.status(409).json({ success: false, message: 'تم اعتماد حذف هذه الوظيفة مسبقاً' });
     }
 
-    if (job.postedBy.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    if (job.postedBy.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: 'غير مصرح لك بحذف هذه الوظيفة',
       });
     }
 
-    // 🛡️ إذا كان الطالب صاحب العمل (وليس أدمن): إرسال طلب حذف للمراجعة ولا يُحذف مباشرة
-    if (req.user.role !== 'admin') {
-      if (job.status !== 'deletion_pending') {
-        job.statusBeforeDeletion = job.status;
-      }
-      job.status = 'deletion_pending';
-      job.deletionRequested = true;
-      await job.save();
-
-      await Notification.create({
-        user: req.user._id,
-        title: 'طلب حذف وظيفة قيد المراجعة ⏳',
-        message: `تم استلام طلبك لحذف وظيفة "${job.title}". لن يتم الحذف النهائي إلا بعد موافقة إدارة المنصة.`,
-        type: 'pending',
-        job: job._id,
-      }).catch((error) => console.error('Failed to notify the job poster about the deletion request:', error.message));
-
-      const admins = await User.find({ role: 'admin' }).select('_id').lean();
-      if (admins.length) {
-        await resetAdminNotificationState('job', job._id);
-
-        await Notification.insertMany(
-          admins.map(admin => ({
-            user: admin._id,
-            title: 'طلب حذف وظيفة جديد',
-            message: `الشركة طلبت حذف الوظيفة "${job.title}" وهي الآن قيد مراجعة طلب الحذف.`,
-            type: 'pending',
-            job: job._id,
-          }))
-        ).catch((error) => console.error('Failed to notify admins about the deletion request:', error.message));
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: 'تم إرسال طلب حذف الوظيفة لإدارة المنصة بنجاح، ولن يتم الحذف إلا بعد مراجعة وموافقة المشرف.',
-        job,
-      });
+    if (job.status !== 'deletion_pending') {
+      job.statusBeforeDeletion = job.status;
     }
+    job.status = 'deletion_pending';
+    job.deletionRequested = true;
+    await job.save();
 
-    // 🗑️ Cascade Delete — للمشرف العام فقط: حذف نهائي مباشر
-    const jobId = job._id;
+    await Notification.create({
+      user: req.user._id,
+      title: 'طلب حذف وظيفة قيد المراجعة ⏳',
+      message: `تم استلام طلبك لحذف وظيفة "${job.title}". لن يتم الحذف النهائي إلا بعد موافقة إدارة المنصة.`,
+      type: 'pending',
+      job: job._id,
+    }).catch((error) => console.error('Failed to notify the job poster about the deletion request:', error.message));
 
-    // 1. جلب IDs كل الـ Applications المرتبطة بالوظيفة
-    const relatedApplications = await Application.find({ job: jobId }).select('_id');
-    const applicationIds = relatedApplications.map((a) => a._id);
+    const admins = await User.find({ role: 'admin' }).select('_id').lean();
+    if (admins.length) {
+      await resetAdminNotificationState('job', job._id);
 
-    // 2. حذف الرسائل المرتبطة بهذه الـ Applications
-    if (applicationIds.length > 0) {
-      await Message.deleteMany({ application: { $in: applicationIds } });
+      await Notification.insertMany(
+        admins.map(admin => ({
+          user: admin._id,
+          title: 'طلب حذف وظيفة جديد',
+          message: `الشركة طلبت حذف الوظيفة "${job.title}" وهي الآن قيد مراجعة طلب الحذف.`,
+          type: 'pending',
+          job: job._id,
+        }))
+      ).catch((error) => console.error('Failed to notify admins about the deletion request:', error.message));
     }
-
-    // 3. حذف الإشعارات المرتبطة بالوظيفة
-    await Notification.deleteMany({ job: jobId });
-
-    // 4. حذف طلبات التقديم على الوظيفة
-    await Application.deleteMany({ job: jobId });
-
-    // 5. حذف سجلات المفضلة المرتبطة بالوظيفة
-    await SavedJob.deleteMany({ job: jobId });
-
-    // 6. أخيراً حذف الوظيفة نفسها
-    await job.deleteOne();
 
     res.status(200).json({
       success: true,
-      message: 'تم حذف الوظيفة وجميع البيانات المرتبطة بها بنجاح',
+      message: 'تم إرسال طلب حذف الوظيفة لإدارة المنصة بنجاح، ولن يتم الحذف إلا بعد مراجعة وموافقة المشرف.',
+      job,
     });
   } catch (error) {
     next(error);
